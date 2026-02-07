@@ -45,8 +45,148 @@ const game = {
     level: 1,
     moves: 30,
     gameState: GAME_STATE.PLAYING,
-    targetScore: 1000
+    targetScore: 1000,
+    // Animation system
+    animations: [],
+    animatingGems: new Set(),
+    swapInProgress: null
 };
+
+// Animation configuration
+const ANIMATION = {
+    SWAP_DURATION: 200,      // ms for swap animation
+    SWAP_EASE: 'ease-in-out'
+};
+
+/**
+ * Animation System - Feature #8: Smooth Swap Animations
+ */
+
+// Easing function for smooth animations
+function easeInOutQuad(t) {
+    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+// Linear interpolation
+function lerp(start, end, t) {
+    return start + (end - start) * t;
+}
+
+// Create a swap animation between two gems
+function createSwapAnimation(gem1, gem2) {
+    const startX1 = gem1.x;
+    const startY1 = gem1.y;
+    const startX2 = gem2.x;
+    const startY2 = gem2.y;
+
+    const endX1 = gem2.x;
+    const endY1 = gem2.y;
+    const endX2 = gem1.x;
+    const endY2 = gem1.y;
+
+    const animation = {
+        type: 'swap',
+        gem1: gem1,
+        gem2: gem2,
+        startTime: performance.now(),
+        duration: ANIMATION.SWAP_DURATION,
+        startX1, startY1, startX2, startY2,
+        endX1, endY1, endX2, endY2,
+        complete: false,
+        onComplete: null
+    };
+
+    return animation;
+}
+
+// Update animation positions
+function updateAnimation(animation, currentTime) {
+    const elapsed = currentTime - animation.startTime;
+    const progress = Math.min(elapsed / animation.duration, 1);
+    const easedProgress = easeInOutQuad(progress);
+
+    if (animation.type === 'swap') {
+        // Animate gem1 from start to end position
+        animation.gem1.x = lerp(animation.startX1, animation.endX1, easedProgress);
+        animation.gem1.y = lerp(animation.startY1, animation.endY1, easedProgress);
+
+        // Animate gem2 from start to end position
+        animation.gem2.x = lerp(animation.startX2, animation.endX2, easedProgress);
+        animation.gem2.y = lerp(animation.startY2, animation.endY2, easedProgress);
+    }
+
+    return progress >= 1;
+}
+
+// Process all active animations
+function processAnimations() {
+    if (game.animations.length === 0) {
+        return;
+    }
+
+    const currentTime = performance.now();
+    const remainingAnimations = [];
+
+    for (const animation of game.animations) {
+        const isComplete = updateAnimation(animation, currentTime);
+
+        if (!isComplete) {
+            remainingAnimations.push(animation);
+        } else {
+            // Snap to final positions
+            if (animation.type === 'swap') {
+                animation.gem1.x = animation.endX1;
+                animation.gem1.y = animation.endY1;
+                animation.gem2.x = animation.endX2;
+                animation.gem2.y = animation.endY2;
+            }
+
+            // Execute callback if present
+            if (animation.onComplete) {
+                animation.onComplete();
+            }
+        }
+    }
+
+    game.animations = remainingAnimations;
+
+    // Check if all animations are complete
+    if (game.animations.length === 0 && game.swapInProgress) {
+        const swapCompleteCallback = game.swapInProgress;
+        game.swapInProgress = null;
+        game.isAnimating = false;
+
+        // Execute the swap completion logic
+        if (swapCompleteCallback) {
+            swapCompleteCallback();
+        }
+    }
+}
+
+// Start a swap animation and return a promise
+function animateSwap(gem1, gem2) {
+    return new Promise((resolve) => {
+        game.isAnimating = true;
+        game.animatingGems.add(gem1);
+        game.animatingGems.add(gem2);
+
+        const animation = createSwapAnimation(gem1, gem2);
+
+        animation.onComplete = () => {
+            game.animatingGems.delete(gem1);
+            game.animatingGems.delete(gem2);
+            resolve();
+        };
+
+        game.animations.push(animation);
+        game.swapInProgress = resolve;
+    });
+}
+
+// Check if any animation is in progress
+function isCurrentlyAnimating() {
+    return game.animations.length > 0;
+}
 
 /**
  * GridManager Class - Manages the game grid
@@ -683,7 +823,7 @@ function clearCanvas() {
 }
 
 /**
- * Main game loop
+ * Main game loop - now with animation processing
  */
 function gameLoop() {
     clearCanvas();
@@ -692,6 +832,9 @@ function gameLoop() {
     drawSelection();
     drawOverlays();
 
+    // Process any active animations
+    processAnimations();
+
     requestAnimationFrame(gameLoop);
 }
 
@@ -699,6 +842,12 @@ function gameLoop() {
  * Handle click events on the game canvas
  */
 function handleCanvasClick(event) {
+    // Feature #8: Prevent interaction during animations
+    if (game.isAnimating) {
+        console.log('Animation in progress, ignoring click');
+        return;
+    }
+
     // Feature #7: Handle game over/restart clicks
     if (game.gameState !== GAME_STATE.PLAYING) {
         if (game.gameState === GAME_STATE.WON) {
@@ -767,9 +916,9 @@ function handleCanvasClick(event) {
         const colDiff = Math.abs(selectedGem.col - col);
 
         if ((rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1)) {
-            // Adjacent - perform swap
-            swapGems(selectedGem, clickedGem);
+            // Adjacent - perform swap with animation
             game.selectedGem = null;
+            swapGems(selectedGem, clickedGem);
         } else {
             // Not adjacent - select the new gem instead
             game.selectedGem = clickedGem;
@@ -778,31 +927,44 @@ function handleCanvasClick(event) {
 }
 
 /**
- * Swap two gems with animation flag
+ * Swap two gems with smooth animation - Feature #8
  */
-function swapGems(gem1, gem2) {
-    // Update grid positions in the grid array
-    const tempType = game.grid[gem1.row][gem1.col].type;
+async function swapGems(gem1, gem2) {
+    // Prevent interaction during animation
+    if (game.isAnimating) {
+        console.log('Animation in progress, ignoring swap request');
+        return;
+    }
 
+    game.isAnimating = true;
+
+    // Store original positions for grid update after animation
+    const tempType = game.grid[gem1.row][gem1.col].type;
+    const tempRow = gem1.row;
+    const tempCol = gem1.col;
+
+    console.log(`🔄 Starting swap animation: (${gem1.row}, ${gem1.col}) ↔ (${gem2.row}, ${gem2.col})`);
+
+    // Animate the swap
+    await animateSwap(gem1, gem2);
+
+    console.log(`✅ Swap animation complete`);
+
+    // Update grid after animation
     game.grid[gem1.row][gem1.col].type = game.grid[gem2.row][gem2.col].type;
     game.grid[gem2.row][gem2.col].type = tempType;
 
-    // Update gem objects' positions
-    const tempX = gem1.x;
-    const tempY = gem1.y;
-
-    gem1.x = gem2.x;
-    gem1.y = gem2.y;
-    gem2.x = tempX;
-    gem2.y = tempY;
-
-    // Update row/col properties
-    const tempRow = gem1.row;
-    const tempCol = gem1.col;
+    // Update gem row/col properties
     gem1.row = gem2.row;
     gem1.col = gem2.col;
     gem2.row = tempRow;
     gem2.col = tempCol;
+
+    // Update gem x/y positions to match new grid positions
+    gem1.x = gem1.col * game.gridManager.gemSize;
+    gem1.y = gem1.row * game.gridManager.gemSize;
+    gem2.x = gem2.col * game.gridManager.gemSize;
+    gem2.y = gem2.row * game.gridManager.gemSize;
 
     console.log(`Swapped gems at (${gem2.row}, ${gem2.col}) and (${gem1.row}, ${gem1.col})`);
 
@@ -838,15 +1000,35 @@ function swapGems(gem1, gem2) {
         console.log('--- Feature #6: Complete ---\n');
 
         // Feature #7: Add score based on matches
-        const scoreGained = matchedGems.length * 10;
+        const scoreGained = uniqueGems.length * 10;
         game.score += scoreGained;
         console.log(`🎯 Score gained: ${scoreGained}, Total score: ${game.score}`);
 
         // Feature #7: Check win/lose conditions
         checkGameState();
     } else {
-        console.log('No match detected after swap');
+        // No match - animate swap back
+        console.log('No match detected, swapping back...');
+        await animateSwap(gem1, gem2);
+
+        // Swap back in grid
+        game.grid[gem1.row][gem1.col].type = game.grid[gem2.row][gem2.col].type;
+        game.grid[gem2.row][gem2.col].type = tempType;
+
+        gem1.row = tempRow;
+        gem1.col = tempCol;
+        gem2.row = gem2.row;
+        gem2.col = gem2.col;
+
+        gem1.x = gem1.col * game.gridManager.gemSize;
+        gem1.y = gem1.row * game.gridManager.gemSize;
+        gem2.x = gem2.col * game.gridManager.gemSize;
+        gem2.y = gem2.row * game.gridManager.gemSize;
+
+        console.log('Swap back complete');
     }
+
+    game.isAnimating = false;
 }
 
 /**
@@ -878,6 +1060,7 @@ function init() {
     console.log('Match detection enabled - Feature #5 implemented');
     console.log('Gem removal and grid refilling enabled - Feature #6 implemented');
     console.log('Win/lose conditions enabled - Feature #7 implemented');
+    console.log('Smooth swap animations enabled - Feature #8 implemented');
     console.log('Target score:', game.targetScore);
     console.log('Click handling enabled for gem selection and swapping');
 
