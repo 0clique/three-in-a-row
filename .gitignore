@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Local orchestrator files (not for GitHub)
+.orchestrator/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
