@@ -674,22 +674,104 @@ class GridManager {
 
         console.log(`🎬 Starting fall animations for ${gemsToFall.length} gems`);
 
-        // Update grid positions first
+        // Store the animation promises
+        const animationPromises = [];
+
         for (const { gem, targetY } of gemsToFall) {
+            // Calculate target row BEFORE updating
+            const targetRow = Math.floor(targetY / this.gemSize);
+            
+            // Update grid: remove from old position, add to new position
             this.grid[gem.row][gem.col] = null;
-            gem.row = Math.floor(targetY / this.gemSize);
+            gem.row = targetRow;
+            gem.y = targetY; // Update visual position for animation
             this.grid[gem.row][gem.col] = gem;
+
+            // Calculate start Y for animation (where gem is visually now)
+            const startY = gem.y;
+            // Reset gem.y to start position for animation
+            gem.y = startY;
+
+            game.animatingGems.add(gem);
+            
+            const animation = createFallAnimation(gem, targetY, startY);
+            
+            const promise = new Promise((resolve) => {
+                animation.onComplete = () => {
+                    game.animatingGems.delete(gem);
+                    resolve();
+                };
+            });
+            
+            game.animations.push(animation);
+            animationPromises.push(promise);
         }
 
-        // Animate the fall
-        await animateFall(gemsToFall);
+        // Wait for all fall animations to complete
+        await Promise.all(animationPromises);
 
         console.log(`✅ Fall animations complete`);
         return gemsToFall.length;
     }
 
     /**
-     * Refill the grid with new random gems in empty spaces
+     * Animate new gems spawning from above the grid
+     * Returns a promise that resolves when animation is complete
+     */
+    async animateSpawnGems() {
+        const gemsToSpawn = [];
+
+        // Find all empty cells and create gems that will fall in
+        for (let row = 0; row < this.rows; row++) {
+            for (let col = 0; col < this.cols; col++) {
+                if (this.grid[row][col] === null) {
+                    const gemType = this.getRandomGemType();
+                    const newGem = this.createGem(row, col, gemType);
+
+                    // Position new gems above the grid for animation effect
+                    const targetY = row * this.gemSize;
+                    newGem.y = -this.gemSize * (this.rows - row);
+
+                    this.grid[row][col] = newGem;
+                    gemsToSpawn.push({ gem: newGem, targetY });
+                }
+            }
+        }
+
+        if (gemsToSpawn.length === 0) {
+            return 0;
+        }
+
+        console.log(`🎬 Starting spawn animations for ${gemsToSpawn.length} new gems`);
+
+        // Create fall animations for spawned gems
+        const animationPromises = [];
+
+        for (const { gem, targetY } of gemsToSpawn) {
+            game.animatingGems.add(gem);
+            
+            const animation = createFallAnimation(gem, targetY, gem.y);
+            
+            const promise = new Promise((resolve) => {
+                animation.onComplete = () => {
+                    game.animatingGems.delete(gem);
+                    resolve();
+                };
+            });
+            
+            game.animations.push(animation);
+            animationPromises.push(promise);
+        }
+
+        // Wait for all spawn animations to complete
+        await Promise.all(animationPromises);
+
+        console.log(`✅ Spawn animations complete`);
+        return gemsToSpawn.length;
+    }
+
+    /**
+     * Refill the grid with new random gems in empty spaces (instant - use animateSpawnGems for animation)
      * Returns the number of new gems spawned
      */
     refillGrid() {
@@ -700,17 +782,12 @@ class GridManager {
                 if (this.grid[row][col] === null) {
                     const gemType = this.getRandomGemType();
                     const newGem = this.createGem(row, col, gemType);
-
-                    // Position new gems above the grid for animation effect
-                    newGem.y = -this.gemSize * (this.rows - row);
-
                     this.grid[row][col] = newGem;
                     spawnedCount++;
                 }
             }
         }
 
-        console.log(`Spawned ${spawnedCount} new gems`);
         return spawnedCount;
     }
 
@@ -766,8 +843,8 @@ class GridManager {
         // Drop existing gems with animation
         const dropped = await this.animateDropGems();
 
-        // Spawn new gems (instant for now, could add spawn animation later)
-        const spawned = this.refillGrid();
+        // Spawn new gems with animation
+        const spawned = await this.animateSpawnGems();
 
         console.log(`Animated match cycle complete: removed ${removed}, dropped ${dropped}, spawned ${spawned}`);
 
@@ -1343,6 +1420,7 @@ function init() {
     console.log('Win/lose conditions enabled - Feature #7 implemented');
     console.log('Smooth swap animations enabled - Feature #8 implemented');
     console.log('Match clear animations enabled - Feature #9 implemented');
+    console.log('Gem falling animation enabled - Feature #10 implemented');
     console.log('Target score:', game.targetScore);
     console.log('Click handling enabled for gem selection and swapping');
 
