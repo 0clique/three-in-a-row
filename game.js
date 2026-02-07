@@ -54,8 +54,11 @@ const game = {
 
 // Animation configuration
 const ANIMATION = {
-    SWAP_DURATION: 200,      // ms for swap animation
-    SWAP_EASE: 'ease-in-out'
+    SWAP_DURATION: 200,          // ms for swap animation
+    SWAP_EASE: 'ease-in-out',
+    CLEAR_DURATION: 250,         // ms for match clear animation
+    CLEAR_EASE: 'ease-in',
+    FALL_DURATION: 150           // ms per cell for falling gems
 };
 
 /**
@@ -186,6 +189,157 @@ function animateSwap(gem1, gem2) {
 // Check if any animation is in progress
 function isCurrentlyAnimating() {
     return game.animations.length > 0;
+}
+
+/**
+ * Animation System - Feature #9: Match Clear Animations
+ */
+
+// Create a clear animation for a gem (shrink and fade out)
+function createClearAnimation(gem) {
+    const animation = {
+        type: 'clear',
+        gem: gem,
+        startTime: performance.now(),
+        duration: ANIMATION.CLEAR_DURATION,
+        startAlpha: gem.alpha,
+        startScale: gem.scale,
+        endAlpha: 0,
+        endScale: 0,
+        complete: false,
+        onComplete: null
+    };
+
+    return animation;
+}
+
+// Create a fall animation for a gem
+function createFallAnimation(gem, targetY, startY) {
+    const distance = targetY - startY;
+    const duration = Math.abs(distance / CONFIG.gemSize) * ANIMATION.FALL_DURATION;
+
+    const animation = {
+        type: 'fall',
+        gem: gem,
+        startTime: performance.now(),
+        duration: duration,
+        startY: startY,
+        targetY: targetY,
+        complete: false,
+        onComplete: null
+    };
+
+    return animation;
+}
+
+// Update clear animation
+function updateClearAnimation(animation, currentTime) {
+    const elapsed = currentTime - animation.startTime;
+    const progress = Math.min(elapsed / animation.duration, 1);
+    const easedProgress = easeInOutQuad(progress);
+
+    // Shrink and fade out
+    animation.gem.alpha = lerp(animation.startAlpha, animation.endAlpha, easedProgress);
+    animation.gem.scale = lerp(animation.startScale, animation.endScale, easedProgress);
+
+    return progress >= 1;
+}
+
+// Update fall animation
+function updateFallAnimation(animation, currentTime) {
+    const elapsed = currentTime - animation.startTime;
+    const progress = Math.min(elapsed / animation.duration, 1);
+    const easedProgress = easeInOutQuad(progress);
+
+    // Fall to target position
+    animation.gem.y = lerp(animation.startY, animation.targetY, easedProgress);
+
+    return progress >= 1;
+}
+
+// Enhanced animation update function to handle clear and fall animations
+function updateAnimation(animation, currentTime) {
+    if (animation.type === 'swap') {
+        const elapsed = currentTime - animation.startTime;
+        const progress = Math.min(elapsed / animation.duration, 1);
+        const easedProgress = easeInOutQuad(progress);
+
+        // Animate gem1 from start to end position
+        animation.gem1.x = lerp(animation.startX1, animation.endX1, easedProgress);
+        animation.gem1.y = lerp(animation.startY1, animation.endY1, easedProgress);
+
+        // Animate gem2 from start to end position
+        animation.gem2.x = lerp(animation.startX2, animation.endX2, easedProgress);
+        animation.gem2.y = lerp(animation.startY2, animation.endY2, easedProgress);
+    } else if (animation.type === 'clear') {
+        return updateClearAnimation(animation, currentTime);
+    } else if (animation.type === 'fall') {
+        return updateFallAnimation(animation, currentTime);
+    }
+
+    return false;
+}
+
+// Animate matched gems clearing - returns a promise
+function animateClearMatch(matchedGems) {
+    return new Promise((resolve) => {
+        if (matchedGems.length === 0) {
+            resolve();
+            return;
+        }
+
+        game.isAnimating = true;
+
+        matchedGems.forEach(gem => {
+            game.animatingGems.add(gem);
+            const animation = createClearAnimation(gem);
+            animation.onComplete = () => {
+                game.animatingGems.delete(gem);
+            };
+            game.animations.push(animation);
+        });
+
+        // Wait for all clear animations to complete
+        const checkComplete = setInterval(() => {
+            if (game.animations.length === 0 ||
+                !game.animations.some(a => matchedGems.includes(a.gem))) {
+                clearInterval(checkComplete);
+                game.isAnimating = false;
+                resolve();
+            }
+        }, 16);
+    });
+}
+
+// Animate gems falling down - returns a promise
+function animateFall(gemsToFall) {
+    return new Promise((resolve) => {
+        if (gemsToFall.length === 0) {
+            resolve();
+            return;
+        }
+
+        game.isAnimating = true;
+
+        gemsToFall.forEach(({ gem, targetY }) => {
+            game.animatingGems.add(gem);
+            const animation = createFallAnimation(gem, targetY, gem.y);
+            animation.onComplete = () => {
+                game.animatingGems.delete(gem);
+            };
+            game.animations.push(animation);
+        });
+
+        // Wait for all fall animations to complete
+        const checkComplete = setInterval(() => {
+            if (game.animations.length === 0 ||
+                !game.animations.some(a => a.type === 'fall')) {
+                clearInterval(checkComplete);
+                game.isAnimating = false;
+                resolve();
+            }
+        }, 16);
+    });
 }
 
 /**
@@ -437,6 +591,18 @@ class GridManager {
     }
 
     /**
+     * Remove matched gems with animation
+     * Returns a promise that resolves when animation is complete
+     */
+    async animateRemoveMatchedGems(matchedGems) {
+        console.log(`🎬 Starting match clear animations for ${matchedGems.length} gems`);
+        await animateClearMatch(matchedGems);
+        const removed = this.removeMatchedGems(matchedGems);
+        console.log(`✅ Clear animations complete, removed ${removed} gems`);
+        return removed;
+    }
+
+    /**
      * Drop gems down to fill empty spaces
      * Returns the number of gems that dropped
      */
@@ -465,6 +631,61 @@ class GridManager {
 
         console.log(`Dropped ${droppedCount} gems down`);
         return droppedCount;
+    }
+
+    /**
+     * Drop gems down to fill empty spaces (version for animation)
+     * Returns array of {gem, targetY} for gems that need to fall
+     */
+    calculateGemsToFall() {
+        const gemsToFall = [];
+
+        // Process each column
+        for (let col = 0; col < this.cols; col++) {
+            let emptyRow = this.rows - 1;
+
+            // Start from the bottom, move gems down
+            for (let row = this.rows - 1; row >= 0; row--) {
+                if (this.grid[row][col] !== null) {
+                    // If there's a gap below, this gem needs to fall
+                    if (row !== emptyRow) {
+                        const gem = this.grid[row][col];
+                        const targetY = emptyRow * this.gemSize;
+                        gemsToFall.push({ gem, targetY, startY: gem.y });
+                    }
+                    emptyRow--;
+                }
+            }
+        }
+
+        return gemsToFall;
+    }
+
+    /**
+     * Animate gems falling down - version that calculates and animates
+     * Returns a promise that resolves when animation is complete
+     */
+    async animateDropGems() {
+        const gemsToFall = this.calculateGemsToFall();
+
+        if (gemsToFall.length === 0) {
+            return 0;
+        }
+
+        console.log(`🎬 Starting fall animations for ${gemsToFall.length} gems`);
+
+        // Update grid positions first
+        for (const { gem, targetY } of gemsToFall) {
+            this.grid[gem.row][gem.col] = null;
+            gem.row = Math.floor(targetY / this.gemSize);
+            this.grid[gem.row][gem.col] = gem;
+        }
+
+        // Animate the fall
+        await animateFall(gemsToFall);
+
+        console.log(`✅ Fall animations complete`);
+        return gemsToFall.length;
     }
 
     /**
@@ -527,6 +748,39 @@ class GridManager {
     }
 
     /**
+     * Process a complete match cycle WITH animations (Feature #9)
+     * Returns info about what happened
+     */
+    async animateMatchCycle() {
+        const matches = this.findMatches();
+
+        if (matches.length === 0) {
+            return { processed: false, removed: 0, dropped: 0, spawned: 0 };
+        }
+
+        const matchedGems = this.getMatchedGems();
+
+        // Remove matched gems with animation
+        const removed = await this.animateRemoveMatchedGems(matchedGems);
+
+        // Drop existing gems with animation
+        const dropped = await this.animateDropGems();
+
+        // Spawn new gems (instant for now, could add spawn animation later)
+        const spawned = this.refillGrid();
+
+        console.log(`Animated match cycle complete: removed ${removed}, dropped ${dropped}, spawned ${spawned}`);
+
+        return {
+            processed: true,
+            removed: removed,
+            dropped: dropped,
+            spawned: spawned,
+            matchedGems: matchedGems
+        };
+    }
+
+    /**
      * Check if there are any matches after a cycle and process recursively
      * Returns total gems cleared in all cascades
      */
@@ -545,6 +799,33 @@ class GridManager {
 
         if (cycleCount > 0) {
             console.log(`Cascade complete: ${cycleCount} cycles, ${totalCleared} total gems cleared`);
+        }
+
+        return totalCleared;
+    }
+
+    /**
+     * Check if there are any matches after a cycle and process recursively WITH animations
+     * Returns total gems cleared in all cascades
+     */
+    async animateCascade() {
+        let totalCleared = 0;
+        let cycleCount = 0;
+        let result = await this.animateMatchCycle();
+
+        while (result.processed) {
+            totalCleared += result.removed;
+            cycleCount++;
+
+            // Brief pause between cascades for visual effect
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Check for new matches after refill
+            result = await this.animateMatchCycle();
+        }
+
+        if (cycleCount > 0) {
+            console.log(`Animated cascade complete: ${cycleCount} cycles, ${totalCleared} total gems cleared`);
         }
 
         return totalCleared;
@@ -979,9 +1260,9 @@ async function swapGems(gem1, gem2) {
         const uniqueGems = game.gridManager.getMatchedGems();
         console.log(`Total unique gems to clear: ${uniqueGems.length}`);
 
-        // Process the match cycle - remove gems, drop, and refill
-        console.log('\n--- Feature #6: Gem Removal and Grid Refilling ---');
-        const cycleResult = game.gridManager.processMatchCycle();
+        // Process the match cycle WITH animations - Feature #9
+        console.log('\n--- Feature #9: Match Clear Animations ---');
+        const cycleResult = await game.gridManager.animateMatchCycle();
 
         if (cycleResult.processed) {
             console.log('Match cycle result:', cycleResult);
@@ -991,13 +1272,13 @@ async function swapGems(gem1, gem2) {
         game.moves--;
         console.log(`\nMoves remaining: ${game.moves}`);
 
-        // Check for cascade matches
-        const totalCleared = game.gridManager.processCascade();
+        // Check for cascade matches WITH animations
+        const totalCleared = await game.gridManager.animateCascade();
         if (totalCleared > 0) {
-            console.log(`Cascade complete! Total gems cleared: ${totalCleared}`);
+            console.log(`Animated cascade complete! Total gems cleared: ${totalCleared}`);
         }
 
-        console.log('--- Feature #6: Complete ---\n');
+        console.log('--- Feature #9: Complete ---\n');
 
         // Feature #7: Add score based on matches
         const scoreGained = uniqueGems.length * 10;
@@ -1061,6 +1342,7 @@ function init() {
     console.log('Gem removal and grid refilling enabled - Feature #6 implemented');
     console.log('Win/lose conditions enabled - Feature #7 implemented');
     console.log('Smooth swap animations enabled - Feature #8 implemented');
+    console.log('Match clear animations enabled - Feature #9 implemented');
     console.log('Target score:', game.targetScore);
     console.log('Click handling enabled for gem selection and swapping');
 
