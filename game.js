@@ -368,5 +368,120 @@ function init() {
     gameLoop();
 }
 
+/**
+ * Handle click events on the game canvas
+ */
+function handleCanvasClick(event) {
+    const rect = game.canvas.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const clickY = event.clientY - rect.top;
+
+    // Calculate grid position
+    const gridX = clickX - CONFIG.gridOffsetX;
+    const gridY = clickY - CONFIG.gridOffsetY;
+
+    // Check if click is within grid bounds
+    if (gridX < 0 || gridY < 0 || 
+        gridX >= CONFIG.gridCols * CONFIG.gemSize || 
+        gridY >= CONFIG.gridRows * CONFIG.gemSize) {
+        // Click outside grid, deselect
+        game.selectedGem = null;
+        return;
+    }
+
+    const col = Math.floor(gridX / CONFIG.gemSize);
+    const row = Math.floor(gridY / CONFIG.gemSize);
+
+    const clickedGem = game.gridManager.getGem(row, col);
+
+    if (!clickedGem) return;
+
+    if (!game.selectedGem) {
+        // First click - select the gem
+        game.selectedGem = clickedGem;
+    } else {
+        // Second click - try to swap
+        const selectedGem = game.selectedGem;
+
+        // Check if clicking on the same gem (deselect)
+        if (selectedGem.row === row && selectedGem.col === col) {
+            game.selectedGem = null;
+            return;
+        }
+
+        // Check if gems are adjacent (horizontally or vertically)
+        const rowDiff = Math.abs(selectedGem.row - row);
+        const colDiff = Math.abs(selectedGem.col - col);
+
+        if ((rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1)) {
+            // Adjacent - perform swap
+            swapGems(selectedGem, clickedGem);
+            game.selectedGem = null;
+        } else {
+            // Not adjacent - select the new gem instead
+            game.selectedGem = clickedGem;
+        }
+    }
+}
+
+/**
+ * Swap two gems with animation flag
+ */
+function swapGems(gem1, gem2) {
+    // Update grid positions in the grid array
+    const tempType = game.grid[gem1.row][gem1.col].type;
+    
+    game.grid[gem1.row][gem1.col].type = game.grid[gem2.row][gem2.col].type;
+    game.grid[gem2.row][gem2.col].type = tempType;
+
+    // Update gem objects' positions
+    const tempX = gem1.x;
+    const tempY = gem1.y;
+    
+    gem1.x = gem2.x;
+    gem1.y = gem2.y;
+    gem2.x = tempX;
+    gem2.y = tempY;
+
+    // Update row/col properties
+    const tempRow = gem1.row;
+    const tempCol = gem1.col;
+    gem1.row = gem2.row;
+    gem1.col = gem2.col;
+    gem2.row = tempRow;
+    gem2.col = tempCol;
+
+    console.log(`Swapped gems at (${gem2.row}, ${gem2.col}) and (${gem1.row}, ${gem1.col})`);
+}
+
+/**
+ * Initialize the game
+ */
+function init() {
+    game.canvas = document.getElementById('game-canvas');
+    game.ctx = game.canvas.getContext('2d');
+
+    // Set canvas dimensions
+    game.canvas.width = CONFIG.canvasWidth;
+    game.canvas.height = CONFIG.canvasHeight;
+
+    // Initialize the grid manager
+    game.gridManager = new GridManager(CONFIG.gridRows, CONFIG.gridCols);
+    game.gridManager.initialize();
+    game.grid = game.gridManager.getGrid();
+
+    // Add click event listener
+    game.canvas.addEventListener('click', handleCanvasClick);
+
+    // Log initialization for debugging
+    console.log('Grid initialized with no matches:', !game.gridManager.hasMatches());
+    console.log('Grid size:', CONFIG.gridRows, 'x', CONFIG.gridCols);
+    console.log('Gem colors:', GEM_COLORS.length);
+    console.log('Click handling enabled for gem selection and swapping');
+
+    // Start the game loop
+    gameLoop();
+}
+
 // Initialize the game when the page loads
 window.addEventListener('load', init);

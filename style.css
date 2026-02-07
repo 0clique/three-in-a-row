@@ -24,4 +24,5 @@ body {
     border-radius: 8px;
     background-color: #16213e;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
 }
