@@ -178,6 +178,96 @@ class GridManager {
         }
         return false;
     }
+
+    /**
+     * Find all matches of 3+ gems in a row (horizontal and vertical)
+     * Returns array of matched gem objects with match type and direction
+     */
+    findMatches() {
+        const matches = [];
+
+        // Find horizontal matches
+        for (let row = 0; row < this.rows; row++) {
+            let matchStart = 0;
+            let matchLength = 1;
+
+            for (let col = 1; col <= this.cols; col++) {
+                const currentGem = this.grid[row][col];
+                const prevGem = this.grid[row][col - 1];
+
+                if (col < this.cols && currentGem && prevGem && currentGem.type === prevGem.type) {
+                    matchLength++;
+                } else {
+                    // End of run, check if we have a match
+                    if (matchLength >= 3) {
+                        for (let i = 0; i < matchLength; i++) {
+                            matches.push({
+                                gem: this.grid[row][matchStart + i],
+                                matchType: matchLength,
+                                direction: 'horizontal'
+                            });
+                        }
+                    }
+                    matchStart = col;
+                    matchLength = 1;
+                }
+            }
+        }
+
+        // Find vertical matches
+        for (let col = 0; col < this.cols; col++) {
+            let matchStart = 0;
+            let matchLength = 1;
+
+            for (let row = 1; row <= this.rows; row++) {
+                const currentGem = this.grid[row] ? this.grid[row][col] : null;
+                const prevGem = this.grid[row - 1] ? this.grid[row - 1][col] : null;
+
+                if (row < this.rows && currentGem && prevGem && currentGem.type === prevGem.type) {
+                    matchLength++;
+                } else {
+                    // End of run, check if we have a match
+                    if (matchLength >= 3) {
+                        for (let i = 0; i < matchLength; i++) {
+                            const gem = this.grid[matchStart + i][col];
+                            // Don't add if already matched horizontally (avoid duplicates)
+                            const alreadyMatched = matches.some(m => m.gem === gem);
+                            if (!alreadyMatched) {
+                                matches.push({
+                                    gem: gem,
+                                    matchType: matchLength,
+                                    direction: 'vertical'
+                                });
+                            }
+                        }
+                    }
+                    matchStart = row;
+                    matchLength = 1;
+                }
+            }
+        }
+
+        return matches;
+    }
+
+    /**
+     * Get unique matched gems from findMatches result
+     */
+    getMatchedGems() {
+        const matches = this.findMatches();
+        const uniqueGems = [];
+        const seen = new Set();
+
+        for (const match of matches) {
+            const gemKey = `${match.gem.row},${match.gem.col}`;
+            if (!seen.has(gemKey)) {
+                seen.add(gemKey);
+                uniqueGems.push(match.gem);
+            }
+        }
+
+        return uniqueGems;
+    }
 }
 
 /**
@@ -363,6 +453,7 @@ function init() {
     console.log('Grid initialized with no matches:', !game.gridManager.hasMatches());
     console.log('Grid size:', CONFIG.gridRows, 'x', CONFIG.gridCols);
     console.log('Gem colors:', GEM_COLORS.length);
+    console.log('Match detection enabled - Feature #5 implemented');
 
     // Start the game loop
     gameLoop();
@@ -430,14 +521,14 @@ function handleCanvasClick(event) {
 function swapGems(gem1, gem2) {
     // Update grid positions in the grid array
     const tempType = game.grid[gem1.row][gem1.col].type;
-    
+
     game.grid[gem1.row][gem1.col].type = game.grid[gem2.row][gem2.col].type;
     game.grid[gem2.row][gem2.col].type = tempType;
 
     // Update gem objects' positions
     const tempX = gem1.x;
     const tempY = gem1.y;
-    
+
     gem1.x = gem2.x;
     gem1.y = gem2.y;
     gem2.x = tempX;
@@ -452,6 +543,20 @@ function swapGems(gem1, gem2) {
     gem2.col = tempCol;
 
     console.log(`Swapped gems at (${gem2.row}, ${gem2.col}) and (${gem1.row}, ${gem1.col})`);
+
+    // Check for matches after swap
+    const matches = game.gridManager.findMatches();
+    if (matches.length > 0) {
+        console.log(`Match detected! Found ${matches.length} matched gems:`);
+        matches.forEach((match, index) => {
+            console.log(`  ${index + 1}. (${match.gem.row}, ${match.gem.col}) - ${match.direction} match of ${match.matchType}`);
+        });
+
+        const uniqueGems = game.gridManager.getMatchedGems();
+        console.log(`Total unique gems to clear: ${uniqueGems.length}`);
+    } else {
+        console.log('No match detected after swap');
+    }
 }
 
 /**
@@ -477,6 +582,7 @@ function init() {
     console.log('Grid initialized with no matches:', !game.gridManager.hasMatches());
     console.log('Grid size:', CONFIG.gridRows, 'x', CONFIG.gridCols);
     console.log('Gem colors:', GEM_COLORS.length);
+    console.log('Match detection enabled - Feature #5 implemented');
     console.log('Click handling enabled for gem selection and swapping');
 
     // Start the game loop
