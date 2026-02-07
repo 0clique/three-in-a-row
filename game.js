@@ -26,6 +26,13 @@ const GEM_COLORS = [
     '#f1c40f'  // Yellow
 ];
 
+// Game state constants
+const GAME_STATE = {
+    PLAYING: 'playing',
+    WON: 'won',
+    LOST: 'lost'
+};
+
 // Game state
 const game = {
     canvas: null,
@@ -36,7 +43,9 @@ const game = {
     isAnimating: false,
     score: 0,
     level: 1,
-    moves: 30
+    moves: 30,
+    gameState: GAME_STATE.PLAYING,
+    targetScore: 1000
 };
 
 /**
@@ -542,6 +551,126 @@ function drawHUD() {
     // Moves
     ctx.textAlign = 'right';
     ctx.fillText(`Moves: ${game.moves}`, CONFIG.canvasWidth - 30, 35);
+
+    // Target score display
+    ctx.textAlign = 'center';
+    ctx.font = '14px Arial';
+    ctx.fillStyle = '#aaaaaa';
+    ctx.fillText(`Target: ${game.targetScore}`, CONFIG.canvasWidth / 2, 55);
+}
+
+/**
+ * Check win/lose conditions
+ */
+function checkGameState() {
+    // Check win condition
+    if (game.score >= game.targetScore) {
+        game.gameState = GAME_STATE.WON;
+        console.log(`🎉 LEVEL COMPLETE! You reached ${game.score} points!`);
+        return true;
+    }
+
+    // Check lose condition
+    if (game.moves <= 0 && game.score < game.targetScore) {
+        game.gameState = GAME_STATE.LOST;
+        console.log(`💀 GAME OVER! Score: ${game.score}/${game.targetScore}`);
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Draw game over overlay
+ */
+function drawGameOverOverlay() {
+    const ctx = game.ctx;
+    const overlayWidth = 300;
+    const overlayHeight = 200;
+    const x = (CONFIG.canvasWidth - overlayWidth) / 2;
+    const y = (CONFIG.canvasHeight - overlayHeight) / 2;
+
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+
+    // Modal background
+    ctx.fillStyle = CONFIG.bucketColor;
+    ctx.beginPath();
+    ctx.roundRect(x, y, overlayWidth, overlayHeight, 12);
+    ctx.fill();
+    ctx.strokeStyle = CONFIG.bucketBorderColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Title
+    ctx.fillStyle = '#ff6b6b';
+    ctx.font = 'bold 28px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', CONFIG.canvasWidth / 2, y + 60);
+
+    // Score display
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '20px Arial';
+    ctx.fillText(`Final Score: ${game.score}`, CONFIG.canvasWidth / 2, y + 100);
+    ctx.fillText(`Target: ${game.targetScore}`, CONFIG.canvasWidth / 2, y + 130);
+
+    // Restart hint
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = '16px Arial';
+    ctx.fillText('Click to restart', CONFIG.canvasWidth / 2, y + 170);
+}
+
+/**
+ * Draw level complete overlay
+ */
+function drawLevelCompleteOverlay() {
+    const ctx = game.ctx;
+    const overlayWidth = 320;
+    const overlayHeight = 220;
+    const x = (CONFIG.canvasWidth - overlayWidth) / 2;
+    const y = (CONFIG.canvasHeight - overlayHeight) / 2;
+
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+
+    // Modal background
+    ctx.fillStyle = CONFIG.bucketColor;
+    ctx.beginPath();
+    ctx.roundRect(x, y, overlayWidth, overlayHeight, 12);
+    ctx.fill();
+    ctx.strokeStyle = CONFIG.bucketBorderColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Title
+    ctx.fillStyle = '#2ecc71';
+    ctx.font = 'bold 28px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('LEVEL COMPLETE!', CONFIG.canvasWidth / 2, y + 60);
+
+    // Score display
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '20px Arial';
+    ctx.fillText(`Final Score: ${game.score}`, CONFIG.canvasWidth / 2, y + 110);
+    ctx.fillText(`Target: ${game.targetScore}`, CONFIG.canvasWidth / 2, y + 140);
+
+    // Restart hint
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = '16px Arial';
+    ctx.fillText('Click to continue to next level', CONFIG.canvasWidth / 2, y + 180);
+}
+
+/**
+ * Draw overlays based on game state
+ */
+function drawOverlays() {
+    if (game.gameState === GAME_STATE.WON) {
+        drawLevelCompleteOverlay();
+    } else if (game.gameState === GAME_STATE.LOST) {
+        drawGameOverOverlay();
+    }
 }
 
 /**
@@ -561,40 +690,41 @@ function gameLoop() {
     drawHUD();
     drawGrid();
     drawSelection();
+    drawOverlays();
 
     requestAnimationFrame(gameLoop);
-}
-
-/**
- * Initialize the game
- */
-function init() {
-    game.canvas = document.getElementById('game-canvas');
-    game.ctx = game.canvas.getContext('2d');
-
-    // Set canvas dimensions
-    game.canvas.width = CONFIG.canvasWidth;
-    game.canvas.height = CONFIG.canvasHeight;
-
-    // Initialize the grid manager
-    game.gridManager = new GridManager(CONFIG.gridRows, CONFIG.gridCols);
-    game.gridManager.initialize();
-    game.grid = game.gridManager.getGrid();
-
-    // Log initialization for debugging
-    console.log('Grid initialized with no matches:', !game.gridManager.hasMatches());
-    console.log('Grid size:', CONFIG.gridRows, 'x', CONFIG.gridCols);
-    console.log('Gem colors:', GEM_COLORS.length);
-    console.log('Match detection enabled - Feature #5 implemented');
-
-    // Start the game loop
-    gameLoop();
 }
 
 /**
  * Handle click events on the game canvas
  */
 function handleCanvasClick(event) {
+    // Feature #7: Handle game over/restart clicks
+    if (game.gameState !== GAME_STATE.PLAYING) {
+        if (game.gameState === GAME_STATE.WON) {
+            // Advance to next level
+            game.level++;
+            game.moves = 30;
+            game.targetScore = 1000 + (game.level - 1) * 500;
+            console.log(`\n🚀 Starting Level ${game.level}! Target: ${game.targetScore}`);
+        } else {
+            // Restart current level
+            game.score = 0;
+            game.moves = 30;
+            console.log(`\n🔄 Restarting Level ${game.level}. Target: ${game.targetScore}`);
+        }
+
+        // Reset game state
+        game.gameState = GAME_STATE.PLAYING;
+
+        // Reinitialize the grid
+        game.gridManager.initialize();
+        game.grid = game.gridManager.getGrid();
+        game.selectedGem = null;
+
+        return;
+    }
+
     const rect = game.canvas.getBoundingClientRect();
     const clickX = event.clientX - rect.left;
     const clickY = event.clientY - rect.top;
@@ -706,6 +836,14 @@ function swapGems(gem1, gem2) {
         }
 
         console.log('--- Feature #6: Complete ---\n');
+
+        // Feature #7: Add score based on matches
+        const scoreGained = matchedGems.length * 10;
+        game.score += scoreGained;
+        console.log(`🎯 Score gained: ${scoreGained}, Total score: ${game.score}`);
+
+        // Feature #7: Check win/lose conditions
+        checkGameState();
     } else {
         console.log('No match detected after swap');
     }
@@ -727,6 +865,9 @@ function init() {
     game.gridManager.initialize();
     game.grid = game.gridManager.getGrid();
 
+    // Set initial target score
+    game.targetScore = 1000;
+
     // Add click event listener
     game.canvas.addEventListener('click', handleCanvasClick);
 
@@ -736,6 +877,8 @@ function init() {
     console.log('Gem colors:', GEM_COLORS.length);
     console.log('Match detection enabled - Feature #5 implemented');
     console.log('Gem removal and grid refilling enabled - Feature #6 implemented');
+    console.log('Win/lose conditions enabled - Feature #7 implemented');
+    console.log('Target score:', game.targetScore);
     console.log('Click handling enabled for gem selection and swapping');
 
     // Start the game loop
