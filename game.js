@@ -268,6 +268,138 @@ class GridManager {
 
         return uniqueGems;
     }
+
+    /**
+     * Remove matched gems from the grid (set to null)
+     * Returns the number of gems removed
+     */
+    removeMatchedGems(matchedGems) {
+        let removedCount = 0;
+
+        for (const gem of matchedGems) {
+            if (this.grid[gem.row] && this.grid[gem.row][gem.col]) {
+                this.grid[gem.row][gem.col] = null;
+                removedCount++;
+            }
+        }
+
+        console.log(`Removed ${removedCount} matched gems`);
+        return removedCount;
+    }
+
+    /**
+     * Drop gems down to fill empty spaces
+     * Returns the number of gems that dropped
+     */
+    dropGems() {
+        let droppedCount = 0;
+
+        // Process each column
+        for (let col = 0; col < this.cols; col++) {
+            let emptyRow = this.rows - 1;
+
+            // Start from the bottom, move gems down
+            for (let row = this.rows - 1; row >= 0; row--) {
+                if (this.grid[row][col] !== null) {
+                    // If there's a gap below, move this gem down
+                    if (row !== emptyRow) {
+                        this.grid[emptyRow][col] = this.grid[row][col];
+                        this.grid[emptyRow][col].row = emptyRow;
+                        this.grid[emptyRow][col].y = emptyRow * this.gemSize;
+                        this.grid[row][col] = null;
+                        droppedCount++;
+                    }
+                    emptyRow--;
+                }
+            }
+        }
+
+        console.log(`Dropped ${droppedCount} gems down`);
+        return droppedCount;
+    }
+
+    /**
+     * Refill the grid with new random gems in empty spaces
+     * Returns the number of new gems spawned
+     */
+    refillGrid() {
+        let spawnedCount = 0;
+
+        for (let row = 0; row < this.rows; row++) {
+            for (let col = 0; col < this.cols; col++) {
+                if (this.grid[row][col] === null) {
+                    const gemType = this.getRandomGemType();
+                    const newGem = this.createGem(row, col, gemType);
+
+                    // Position new gems above the grid for animation effect
+                    newGem.y = -this.gemSize * (this.rows - row);
+
+                    this.grid[row][col] = newGem;
+                    spawnedCount++;
+                }
+            }
+        }
+
+        console.log(`Spawned ${spawnedCount} new gems`);
+        return spawnedCount;
+    }
+
+    /**
+     * Process a complete match cycle: remove matches, drop gems, and refill
+     * Returns info about what happened
+     */
+    processMatchCycle() {
+        const matches = this.findMatches();
+
+        if (matches.length === 0) {
+            return { processed: false, removed: 0, dropped: 0, spawned: 0 };
+        }
+
+        const matchedGems = this.getMatchedGems();
+
+        // Remove matched gems
+        const removed = this.removeMatchedGems(matchedGems);
+
+        // Drop existing gems
+        const dropped = this.dropGems();
+
+        // Spawn new gems
+        const spawned = this.refillGrid();
+
+        console.log(`Match cycle complete: removed ${removed}, dropped ${dropped}, spawned ${spawned}`);
+
+        return {
+            processed: true,
+            removed: removed,
+            dropped: dropped,
+            spawned: spawned,
+            matchedGems: matchedGems
+        };
+    }
+
+    /**
+     * Check if there are any matches after a cycle and process recursively
+     * Returns total gems cleared in all cascades
+     */
+    processCascade() {
+        let totalCleared = 0;
+        let cycleCount = 0;
+        let result = this.processMatchCycle();
+
+        while (result.processed) {
+            totalCleared += result.removed;
+            cycleCount++;
+
+            // Check for new matches after refill
+            result = this.processMatchCycle();
+        }
+
+        if (cycleCount > 0) {
+            console.log(`Cascade complete: ${cycleCount} cycles, ${totalCleared} total gems cleared`);
+        }
+
+        return totalCleared;
+    }
 }
 
 /**
@@ -554,6 +686,26 @@ function swapGems(gem1, gem2) {
 
         const uniqueGems = game.gridManager.getMatchedGems();
         console.log(`Total unique gems to clear: ${uniqueGems.length}`);
+
+        // Process the match cycle - remove gems, drop, and refill
+        console.log('\n--- Feature #6: Gem Removal and Grid Refilling ---');
+        const cycleResult = game.gridManager.processMatchCycle();
+
+        if (cycleResult.processed) {
+            console.log('Match cycle result:', cycleResult);
+        }
+
+        // Decrement moves after a successful match
+        game.moves--;
+        console.log(`\nMoves remaining: ${game.moves}`);
+
+        // Check for cascade matches
+        const totalCleared = game.gridManager.processCascade();
+        if (totalCleared > 0) {
+            console.log(`Cascade complete! Total gems cleared: ${totalCleared}`);
+        }
+
+        console.log('--- Feature #6: Complete ---\n');
     } else {
         console.log('No match detected after swap');
     }
@@ -583,6 +735,7 @@ function init() {
     console.log('Grid size:', CONFIG.gridRows, 'x', CONFIG.gridCols);
     console.log('Gem colors:', GEM_COLORS.length);
     console.log('Match detection enabled - Feature #5 implemented');
+    console.log('Gem removal and grid refilling enabled - Feature #6 implemented');
     console.log('Click handling enabled for gem selection and swapping');
 
     // Start the game loop
