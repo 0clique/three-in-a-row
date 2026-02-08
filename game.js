@@ -145,7 +145,8 @@ const SoundManager = {
             osc.stop(this.audioContext.currentTime + duration);
         } catch (e) {
             // Silently fail if audio fails
-        },
+        }
+    },
     
     // Sound effects
     select() {
@@ -2385,6 +2386,7 @@ function handleCanvasClick(event) {
             SettingsManager.toggle();
             return;
         }
+    }
 
     // Feature #15: Handle level complete screen clicks
     if (game.gameState === GAME_STATE.WON) {
