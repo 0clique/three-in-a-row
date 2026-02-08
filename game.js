@@ -1450,44 +1450,129 @@ function checkGameState() {
 }
 
 /**
- * Draw game over overlay
+ * Feature #16: Enhanced Game Over Screen with polish, stats, and restart options
  */
 function drawGameOverOverlay() {
     const ctx = game.ctx;
-    const overlayWidth = 300;
-    const overlayHeight = 200;
+    const overlayWidth = 360;
+    const overlayHeight = 320;
     const x = (CONFIG.canvasWidth - overlayWidth) / 2;
     const y = (CONFIG.canvasHeight - overlayHeight) / 2;
 
     // Semi-transparent overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
     ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
 
-    // Modal background
-    ctx.fillStyle = CONFIG.bucketColor;
+    // Modal background with gradient (dark, serious tone for loss)
+    const gradient = ctx.createLinearGradient(x, y, x, y + overlayHeight);
+    gradient.addColorStop(0, '#2d3436');
+    gradient.addColorStop(1, '#1a1a2e');
+    ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.roundRect(x, y, overlayWidth, overlayHeight, 12);
+    ctx.roundRect(x, y, overlayWidth, overlayHeight, 16);
     ctx.fill();
-    ctx.strokeStyle = CONFIG.bucketBorderColor;
+
+    // Modal border with red accent (loss indicator)
+    ctx.strokeStyle = '#e74c3c';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Animated "GAME OVER" title with red glow
+    ctx.shadowColor = '#e74c3c';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = '#e74c3c';
+    ctx.font = 'bold 36px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', CONFIG.canvasWidth / 2, y + 55);
+    ctx.shadowBlur = 0;
+
+    // Draw skull icon above text (simple visual)
+    const skullY = y + 35;
+    const skullSize = 16;
+    ctx.fillStyle = 'rgba(231, 76, 60, 0.8)';
+    ctx.beginPath();
+    ctx.arc(CONFIG.canvasWidth / 2, skullY - 15, skullSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Divider line
+    const dividerY = y + 85;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 40, dividerY);
+    ctx.lineTo(x + overlayWidth - 40, dividerY);
+    ctx.stroke();
+
+    // Score display with nice formatting
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText(`Final Score: ${game.score}`, CONFIG.canvasWidth / 2, y + 125);
+
+    // Target info
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = '16px Arial';
+    ctx.fillText(`Target: ${game.targetScore}`, CONFIG.canvasWidth / 2, y + 155);
+
+    // Progress bar showing how close they got
+    const progressY = y + 180;
+    const progressWidth = 200;
+    const progressHeight = 12;
+    const progressX = CONFIG.canvasWidth / 2 - progressWidth / 2;
+
+    // Progress background
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.beginPath();
+    ctx.roundRect(progressX, progressY, progressWidth, progressHeight, 6);
+    ctx.fill();
+
+    // Progress fill (red since failed)
+    const progress = Math.min(1, game.score / game.targetScore);
+    const progressFill = Math.max(5, progressWidth * progress);
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath();
+    ctx.roundRect(progressX, progressY, progressFill, progressHeight, 6);
+    ctx.fill();
+
+    // Progress percentage
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = '14px Arial';
+    ctx.fillText(`${Math.floor(progress * 100)}% of target`, CONFIG.canvasWidth / 2, progressY + 30);
+
+    // Restart button
+    const buttonY = y + 250;
+    const buttonWidth = 160;
+    const buttonHeight = 44;
+    const buttonX = CONFIG.canvasWidth / 2 - buttonWidth / 2;
+
+    // Button hover effect
+    ctx.shadowColor = '#e74c3c';
+    ctx.shadowBlur = 10;
+
+    // Button background
+    const buttonGradient = ctx.createLinearGradient(buttonX, buttonY, buttonX, buttonY + buttonHeight);
+    buttonGradient.addColorStop(0, '#e74c3c');
+    buttonGradient.addColorStop(1, '#c0392b');
+    ctx.fillStyle = buttonGradient;
+    ctx.beginPath();
+    ctx.roundRect(buttonX, buttonY, buttonWidth, buttonHeight, 8);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    // Button border
+    ctx.strokeStyle = '#e74c3c';
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Title
-    ctx.fillStyle = '#ff6b6b';
-    ctx.font = 'bold 28px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('GAME OVER', CONFIG.canvasWidth / 2, y + 60);
-
-    // Score display
+    // Button text
     ctx.fillStyle = '#ffffff';
-    ctx.font = '20px Arial';
-    ctx.fillText(`Final Score: ${game.score}`, CONFIG.canvasWidth / 2, y + 100);
-    ctx.fillText(`Target: ${game.targetScore}`, CONFIG.canvasWidth / 2, y + 130);
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText('Try Again', CONFIG.canvasWidth / 2, buttonY + 28);
 
     // Restart hint
-    ctx.fillStyle = '#aaaaaa';
-    ctx.font = '16px Arial';
-    ctx.fillText('Click to restart', CONFIG.canvasWidth / 2, y + 170);
+    ctx.fillStyle = '#888888';
+    ctx.font = '14px Arial';
+    ctx.fillText('or click anywhere to restart', CONFIG.canvasWidth / 2, y + overlayHeight - 15);
 }
 
 // Level complete animation state
