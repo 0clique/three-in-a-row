@@ -53,7 +53,8 @@ const GAME_STATE = {
     MENU: 'menu',
     PLAYING: 'playing',
     WON: 'won',
-    LOST: 'lost'
+    LOST: 'lost',
+    PAUSED: 'paused'  // Feature #17: Pause functionality
 };
 
 // Game state
@@ -64,6 +65,7 @@ const game = {
     gridManager: null,
     selectedGem: null,
     isAnimating: false,
+    isPaused: false,  // Feature #17: Pause state
     score: 0,
     level: 1,
     moves: 30,
@@ -242,6 +244,28 @@ function stopTimer() {
 function resetTimer() {
     stopTimer();
     game.timer = 60;
+}
+
+// Feature #17: Pause functionality
+function togglePause() {
+    if (game.gameState !== GAME_STATE.PLAYING) return;
+    
+    game.isPaused = !game.isPaused;
+    
+    if (game.isPaused) {
+        // Pause the timer
+        if (game.timerInterval) {
+            clearInterval(game.timerInterval);
+            game.timerInterval = null;
+        }
+        game.gameState = GAME_STATE.PAUSED;
+        console.log('Game paused');
+    } else {
+        // Resume the timer
+        startTimer();
+        game.gameState = GAME_STATE.PLAYING;
+        console.log('Game resumed');
+    }
 }
 
 // Format time as MM:SS
@@ -1829,6 +1853,128 @@ if (typeof game !== 'undefined') {
 }
 
 /**
+ * Feature #17: Pause Overlay with resume and quit options
+ */
+function drawPauseOverlay() {
+    const ctx = game.ctx;
+    const overlayWidth = 320;
+    const overlayHeight = 280;
+    const x = (CONFIG.canvasWidth - overlayWidth) / 2;
+    const y = (CONFIG.canvasHeight - overlayHeight) / 2;
+
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+
+    // Modal background with gradient
+    const gradient = ctx.createLinearGradient(x, y, x, y + overlayHeight);
+    gradient.addColorStop(0, '#2d3436');
+    gradient.addColorStop(1, '#1a1a2e');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.roundRect(x, y, overlayWidth, overlayHeight, 16);
+    ctx.fill();
+
+    // Modal border with yellow accent (pause indicator)
+    ctx.strokeStyle = '#f1c40f';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // "PAUSED" title with glow
+    ctx.shadowColor = '#f1c40f';
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = '#f1c40f';
+    ctx.font = 'bold 32px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAUSED', CONFIG.canvasWidth / 2, y + 50);
+    ctx.shadowBlur = 0;
+
+    // Divider line
+    const dividerY = y + 70;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 40, dividerY);
+    ctx.lineTo(x + overlayWidth - 40, dividerY);
+    ctx.stroke();
+
+    // Stats display (frozen)
+    const statsY = y + 110;
+    ctx.fillStyle = '#ecf0f1';
+    ctx.font = '16px Arial';
+    ctx.fillText(`Score: ${game.score}`, CONFIG.canvasWidth / 2, statsY);
+    ctx.fillText(`Moves: ${game.moves}`, CONFIG.canvasWidth / 2, statsY + 30);
+    ctx.fillText(`Time: ${formatTime(game.timer)}`, CONFIG.canvasWidth / 2, statsY + 60);
+
+    // Resume button
+    const resumeBtnWidth = 200;
+    const resumeBtnHeight = 40;
+    const resumeBtnX = (CONFIG.canvasWidth - resumeBtnWidth) / 2;
+    const resumeBtnY = y + 190;
+
+    // Button hover effect
+    const rect = game.canvas.getBoundingClientRect();
+    const mouseX = (game.lastMouseX || 0) - rect.left;
+    const mouseY = (game.lastMouseY || 0) - rect.top;
+    const isHoveringResume = mouseX >= resumeBtnX && mouseX <= resumeBtnX + resumeBtnWidth &&
+                              mouseY >= resumeBtnY && mouseY <= resumeBtnY + resumeBtnHeight;
+
+    // Button shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.roundRect(resumeBtnX + 3, resumeBtnY + 3, resumeBtnWidth, resumeBtnHeight, 8);
+    ctx.fill();
+
+    // Button background
+    const btnGradient = ctx.createLinearGradient(resumeBtnX, resumeBtnY, resumeBtnX, resumeBtnY + resumeBtnHeight);
+    btnGradient.addColorStop(0, isHoveringResume ? '#27ae60' : '#2ecc71');
+    btnGradient.addColorStop(1, isHoveringResume ? '#1e8449' : '#27ae60');
+    ctx.fillStyle = btnGradient;
+    ctx.beginPath();
+    ctx.roundRect(resumeBtnX, resumeBtnY, resumeBtnWidth, resumeBtnHeight, 8);
+    ctx.fill();
+
+    // Button text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText('RESUME', CONFIG.canvasWidth / 2, resumeBtnY + 27);
+
+    // Quit button
+    const quitBtnWidth = 160;
+    const quitBtnHeight = 36;
+    const quitBtnX = (CONFIG.canvasWidth - quitBtnWidth) / 2;
+    const quitBtnY = y + 240;
+
+    const isHoveringQuit = mouseX >= quitBtnX && mouseX <= quitBtnX + quitBtnWidth &&
+                            mouseY >= quitBtnY && mouseY <= quitBtnY + quitBtnHeight;
+
+    // Button shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.roundRect(quitBtnX + 3, quitBtnY + 3, quitBtnWidth, quitBtnHeight, 8);
+    ctx.fill();
+
+    // Button background (red for quit)
+    const quitBtnGradient = ctx.createLinearGradient(quitBtnX, quitBtnY, quitBtnX, quitBtnY + quitBtnHeight);
+    quitBtnGradient.addColorStop(0, isHoveringQuit ? '#c0392b' : '#e74c3c');
+    quitBtnGradient.addColorStop(1, isHoveringQuit ? '#922b21' : '#c0392b');
+    ctx.fillStyle = quitBtnGradient;
+    ctx.beginPath();
+    ctx.roundRect(quitBtnX, quitBtnY, quitBtnWidth, quitBtnHeight, 8);
+    ctx.fill();
+
+    // Button text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px Arial';
+    ctx.fillText('QUIT TO MENU', CONFIG.canvasWidth / 2, quitBtnY + 24);
+    
+    // Pause hint
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.font = '12px Arial';
+    ctx.fillText('Press ESC or P to unpause', CONFIG.canvasWidth / 2, y + overlayHeight - 15);
+}
+
+/**
  * Draw overlays based on game state
  */
 function drawOverlays() {
@@ -1838,6 +1984,8 @@ function drawOverlays() {
         drawLevelCompleteOverlay();
     } else if (game.gameState === GAME_STATE.LOST) {
         drawGameOverOverlay();
+    } else if (game.gameState === GAME_STATE.PAUSED) {
+        drawPauseOverlay();
     }
 }
 
@@ -1859,6 +2007,12 @@ function gameLoop() {
     if (game.gameState === GAME_STATE.MENU) {
         // Feature #13: Show start screen
         drawStartScreen();
+    } else if (game.gameState === GAME_STATE.PAUSED) {
+        // Feature #17: Show game state behind pause overlay
+        drawHUD();
+        drawGrid();
+        drawSelection();
+        drawPauseOverlay();
     } else {
         drawHUD();
         drawGrid();
@@ -1882,6 +2036,46 @@ function handleCanvasClick(event) {
     // Feature #8: Prevent interaction during animations
     if (game.isAnimating) {
         console.log('Animation in progress, ignoring click');
+        return;
+    }
+
+    // Feature #17: Handle pause overlay clicks
+    if (game.gameState === GAME_STATE.PAUSED) {
+        const rect = game.canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+
+        const overlayWidth = 320;
+        const overlayHeight = 280;
+        const overlayX = (CONFIG.canvasWidth - overlayWidth) / 2;
+        const overlayY = (CONFIG.canvasHeight - overlayHeight) / 2;
+
+        // Resume button
+        const resumeBtnWidth = 200;
+        const resumeBtnHeight = 40;
+        const resumeBtnX = (CONFIG.canvasWidth - resumeBtnWidth) / 2;
+        const resumeBtnY = overlayY + 190;
+
+        if (clickX >= resumeBtnX && clickX <= resumeBtnX + resumeBtnWidth &&
+            clickY >= resumeBtnY && clickY <= resumeBtnY + resumeBtnHeight) {
+            togglePause(); // Resume game
+            return;
+        }
+
+        // Quit button
+        const quitBtnWidth = 160;
+        const quitBtnHeight = 36;
+        const quitBtnX = (CONFIG.canvasWidth - quitBtnWidth) / 2;
+        const quitBtnY = overlayY + 240;
+
+        if (clickX >= quitBtnX && clickX <= quitBtnX + quitBtnWidth &&
+            clickY >= quitBtnY && clickY <= quitBtnY + quitBtnHeight) {
+            // Quit to menu
+            game.gameState = GAME_STATE.MENU;
+            game.isPaused = false;
+            stopTimer();
+            return;
+        }
         return;
     }
 
@@ -2206,10 +2400,20 @@ function init() {
     console.log('Start screen enabled - Feature #13 implemented');
     console.log('HUD with timer enabled - Feature #14 implemented');
     console.log('Level complete screen enabled - Feature #15 implemented');
+    console.log('Game over screen enabled - Feature #16 implemented');
+    console.log('Pause functionality enabled - Feature #17 implemented');
     console.log('\n🎮 Click "PLAY" to start the game! 60 seconds on the clock!');
+    console.log('Press ESC or P to pause the game');
     
-    // Keyboard shortcut for toggling sound (press 'M')
+    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
+        // Feature #17: Pause toggle with ESC or P
+        if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+            togglePause();
+            return;
+        }
+        
+        // Sound toggle with M
         if (e.key === 'm' || e.key === 'M') {
             SoundManager.init();
             SoundManager.toggle();
