@@ -485,6 +485,8 @@ function updateAnimation(animation, currentTime) {
         // Animate gem2 from start to end position
         animation.gem2.x = lerp(animation.startX2, animation.endX2, easedProgress);
         animation.gem2.y = lerp(animation.startY2, animation.endY2, easedProgress);
+
+        return progress >= 1;  // ✅ FIX: Return completion status
     } else if (animation.type === 'clear') {
         return updateClearAnimation(animation, currentTime);
     } else if (animation.type === 'fall') {
