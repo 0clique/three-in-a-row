@@ -2325,6 +2325,10 @@ async function swapGems(gem1, gem2) {
             // Play cascade sound for chain reactions
             SoundManager.cascade();
             console.log(`Animated cascade complete! Total gems cleared: ${totalCleared}`);
+
+            // Bonus: Add 1 second per cascade combo
+            game.timer += 1;
+            console.log(`⏱️ Cascade bonus! +1s, Timer: ${game.timer}s`);
         }
 
         console.log('--- Feature #9: Complete ---\n');
@@ -2333,6 +2337,10 @@ async function swapGems(gem1, gem2) {
         const scoreGained = uniqueGems.length * 10;
         game.score += scoreGained;
         console.log(`🎯 Score gained: ${scoreGained}, Total score: ${game.score}`);
+
+        // Add 1 second to timer for successful match
+        game.timer += 1;
+        console.log(`⏱️ +1 second bonus! Timer: ${game.timer}s`);
 
         // Feature #7: Check win/lose conditions
         checkGameState();
