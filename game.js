@@ -18,6 +18,28 @@ const CONFIG = {
     gridOffsetY: 60
 };
 
+// Polyfill for roundRect if not available
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        if (typeof r === 'number') {
+            r = [r, r, r, r];
+        }
+        const [tl, tr, br, bl] = r;
+        this.beginPath();
+        this.moveTo(x + tl, y);
+        this.lineTo(x + w - tr, y);
+        this.quadraticCurveTo(x + w, y, x + w, y + tr);
+        this.lineTo(x + w, y + h - br);
+        this.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
+        this.lineTo(x + bl, y + h);
+        this.quadraticCurveTo(x, y + h, x, y + h - bl);
+        this.lineTo(x, y + tl);
+        this.quadraticCurveTo(x, y, x + tl, y);
+        this.closePath();
+        return this;
+    };
+}
+
 // Gem colors (4 colors as per requirements)
 const GEM_COLORS = [
     '#e74c3c', // Red
@@ -28,6 +50,7 @@ const GEM_COLORS = [
 
 // Game state constants
 const GAME_STATE = {
+    MENU: 'menu',
     PLAYING: 'playing',
     WON: 'won',
     LOST: 'lost'
@@ -44,7 +67,8 @@ const game = {
     score: 0,
     level: 1,
     moves: 30,
-    gameState: GAME_STATE.PLAYING,
+    gameState: GAME_STATE.MENU,
+    gridInitialized: false,
     targetScore: 1000,
     // Animation system
     animations: [],
@@ -1216,6 +1240,90 @@ function updateSelectionAnimation() {
 }
 
 /**
+ * Feature #13: Draw start screen
+ */
+function drawStartScreen() {
+    const ctx = game.ctx;
+
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(26, 26, 46, 0.95)';
+    ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+
+    // Decorative gems
+    const gemPositions = [
+        { x: 80, y: 150, color: GEM_COLORS[0], scale: 1.2 },
+        { x: 440, y: 150, color: GEM_COLORS[1], scale: 1.2 },
+        { x: 80, y: 450, color: GEM_COLORS[2], scale: 1.2 },
+        { x: 440, y: 450, color: GEM_COLORS[3], scale: 1.2 },
+        { x: 260, y: 100, color: GEM_COLORS[0], scale: 0.8 },
+        { x: 260, y: 500, color: GEM_COLORS[1], scale: 0.8 },
+    ];
+
+    gemPositions.forEach(gem => {
+        ctx.globalAlpha = 0.3 + Math.sin(Date.now() / 1000 + gem.x) * 0.1;
+        ctx.beginPath();
+        ctx.arc(gem.x, gem.y, CONFIG.gemSize * gem.scale / 2, 0, Math.PI * 2);
+        ctx.fillStyle = gem.color;
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // Game title
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 48px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('THREE', CONFIG.canvasWidth / 2, 180);
+    ctx.fillText('IN A ROW', CONFIG.canvasWidth / 2, 240);
+
+    // Decorative line
+    ctx.strokeStyle = '#f1c40f';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(160, 260);
+    ctx.lineTo(360, 260);
+    ctx.stroke();
+
+    // Subtitle
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = '18px Arial';
+    ctx.fillText('Match 3 gems to win!', CONFIG.canvasWidth / 2, 310);
+
+    // Play button
+    const btnWidth = 180;
+    const btnHeight = 50;
+    const btnX = (CONFIG.canvasWidth - btnWidth) / 2;
+    const btnY = 380;
+
+    // Button shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(btnX + 3, btnY + 3, btnWidth, btnHeight, 8);
+    ctx.fill();
+
+    // Button background
+    ctx.fillStyle = '#2ecc71';
+    ctx.beginPath();
+    ctx.roundRect(btnX, btnY, btnWidth, btnHeight, 8);
+    ctx.fill();
+
+    // Button text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText('PLAY', CONFIG.canvasWidth / 2, btnY + 33);
+
+    // Instructions
+    ctx.fillStyle = '#666666';
+    ctx.font = '14px Arial';
+    ctx.fillText('Click adjacent gems to swap and match 3 in a row', CONFIG.canvasWidth / 2, 480);
+    ctx.fillText('Match as many as you can before time runs out!', CONFIG.canvasWidth / 2, 500);
+
+    // Version
+    ctx.fillStyle = '#444444';
+    ctx.font = '12px Arial';
+    ctx.fillText('v1.0', CONFIG.canvasWidth / 2, 560);
+}
+
+/**
  * Draw game HUD
  */
 function drawHUD() {
@@ -1355,7 +1463,9 @@ function drawLevelCompleteOverlay() {
  * Draw overlays based on game state
  */
 function drawOverlays() {
-    if (game.gameState === GAME_STATE.WON) {
+    if (game.gameState === GAME_STATE.MENU) {
+        drawStartScreen();
+    } else if (game.gameState === GAME_STATE.WON) {
         drawLevelCompleteOverlay();
     } else if (game.gameState === GAME_STATE.LOST) {
         drawGameOverOverlay();
@@ -1376,16 +1486,22 @@ function clearCanvas() {
  */
 function gameLoop() {
     clearCanvas();
-    drawHUD();
-    drawGrid();
-    drawSelection();
-    drawOverlays();
 
-    // Update selection animation state
-    updateSelectionAnimation();
+    if (game.gameState === GAME_STATE.MENU) {
+        // Feature #13: Show start screen
+        drawStartScreen();
+    } else {
+        drawHUD();
+        drawGrid();
+        drawSelection();
+        drawOverlays();
 
-    // Process any active animations
-    processAnimations();
+        // Update selection animation state
+        updateSelectionAnimation();
+
+        // Process any active animations
+        processAnimations();
+    }
 
     requestAnimationFrame(gameLoop);
 }
@@ -1397,6 +1513,39 @@ function handleCanvasClick(event) {
     // Feature #8: Prevent interaction during animations
     if (game.isAnimating) {
         console.log('Animation in progress, ignoring click');
+        return;
+    }
+
+    // Feature #13: Handle start screen clicks
+    if (game.gameState === GAME_STATE.MENU) {
+        const rect = game.canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+
+        // Check if play button was clicked
+        const btnWidth = 180;
+        const btnHeight = 50;
+        const btnX = (CONFIG.canvasWidth - btnWidth) / 2;
+        const btnY = 380;
+
+        if (clickX >= btnX && clickX <= btnX + btnWidth &&
+            clickY >= btnY && clickY <= btnY + btnHeight) {
+            // Start the game
+            game.gameState = GAME_STATE.PLAYING;
+            game.score = 0;
+            game.level = 1;
+            game.moves = 30;
+            game.targetScore = 1000;
+
+            // Initialize grid if not already done
+            if (!game.gridInitialized) {
+                game.gridManager.initialize();
+                game.grid = game.gridManager.getGrid();
+                game.gridInitialized = true;
+            }
+
+            console.log('\n🎮 Starting game! Level 1 - Target: 1000 points');
+        }
         return;
     }
 
@@ -1611,17 +1760,14 @@ function init() {
 
     // Initialize the grid manager
     game.gridManager = new GridManager(CONFIG.gridRows, CONFIG.gridCols);
-    game.gridManager.initialize();
-    game.grid = game.gridManager.getGrid();
-
-    // Set initial target score
-    game.targetScore = 1000;
+    // Feature #13: Grid initialized on first play, not at load time
+    game.gridInitialized = false;
 
     // Add click event listener
     game.canvas.addEventListener('click', handleCanvasClick);
 
     // Log initialization for debugging
-    console.log('Grid initialized with no matches:', !game.gridManager.hasMatches());
+    console.log('Three-in-a-Row Game initialized');
     console.log('Grid size:', CONFIG.gridRows, 'x', CONFIG.gridCols);
     console.log('Gem colors:', GEM_COLORS.length);
     console.log('Match detection enabled - Feature #5 implemented');
@@ -1631,8 +1777,8 @@ function init() {
     console.log('Match clear animations enabled - Feature #9 implemented');
     console.log('Gem falling animation enabled - Feature #10 implemented');
     console.log('Sound effects enabled - Feature #12 implemented');
-    console.log('Target score:', game.targetScore);
-    console.log('Click handling enabled for gem selection and swapping');
+    console.log('Start screen enabled - Feature #13 implemented');
+    console.log('\n🎮 Click "PLAY" to start the game!');
     
     // Keyboard shortcut for toggling sound (press 'M')
     document.addEventListener('keydown', (e) => {
