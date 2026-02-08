@@ -48,6 +48,20 @@ const GEM_COLORS = [
     '#f1c40f'  // Yellow
 ];
 
+// Power-up gem types (Feature #20)
+const POWERUP_TYPES = {
+    NONE: 'none',
+    BOMB: 'bomb',       // Clears 3x3 area around it
+    COLOR_CLEAR: 'color' // Clears all gems of one color
+};
+
+// Power-up configuration
+const POWERUP_CONFIG = {
+    bombRadius: 1,      // 1 = 3x3 area (clears center + 8 surrounding)
+    scoreMultiplier: 2,  // Bonus score multiplier for power-up activation
+    creationMatchSize: 4 // Minimum match size to create a power-up
+};
+
 // Game state constants
 const GAME_STATE = {
     MENU: 'menu',
@@ -84,6 +98,12 @@ const game = {
     comboTimer: null,        // Timer to reset combo
     maxCombo: 0,             // Highest combo achieved this level
     comboMessages: []        // Active combo popup messages
+};
+
+// Feature #20: Power-up system
+const powerUpSystem = {
+    activeEffects: [],  // Active power-up effects for animation
+    pendingPowerUps: [] // Power-ups to be created after match
 };
 
 // Animation configuration
@@ -283,6 +303,124 @@ const COMBO_CONFIG = {
     maxMultiplier: 10,       // Maximum combo multiplier
     showPopup: true          // Show combo popup messages
 };
+
+/**
+ * Feature #20: Power-up System
+ * Bomb gem - clears 3x3 area
+ * Color clear gem - clears all gems of one color
+ */
+
+// Determine what power-up to create based on match
+function getPowerUpForMatch(matchLength, direction) {
+    if (matchLength < POWERUP_CONFIG.creationMatchSize) {
+        return POWERUP_TYPES.NONE;
+    }
+
+    // 4-match = bomb
+    if (matchLength === 4) {
+        return POWERUP_TYPES.BOMB;
+    }
+
+    // 5+ match = color clear
+    if (matchLength >= 5) {
+        return POWERUP_TYPES.COLOR_CLEAR;
+    }
+
+    return POWERUP_TYPES.NONE;
+}
+
+// Create a power-up gem
+function createPowerUpGem(row, col, type, powerUpType) {
+    const gem = game.gridManager.createGem(row, col, type, powerUpType);
+    gem.scale = 0.1; // Start small for spawn animation
+    return gem;
+}
+
+// Activate a power-up gem
+function activatePowerUp(gem) {
+    if (gem.powerUpType === POWERUP_TYPES.NONE) {
+        return [];
+    }
+
+    const gemsToClear = [];
+    const targetColor = gem.type;
+
+    if (gem.powerUpType === POWERUP_TYPES.BOMB) {
+        // Bomb clears 3x3 area
+        for (let row = gem.row - 1; row <= gem.row + 1; row++) {
+            for (let col = gem.col - 1; col <= gem.col + 1; col++) {
+                const targetGem = game.gridManager.getGem(row, col);
+                if (targetGem && !gemsToClear.includes(targetGem)) {
+                    gemsToClear.push(targetGem);
+                }
+            }
+        }
+        console.log(`💣 BOMB ACTIVATED! Clearing ${gemsToClear.length} gems`);
+        SoundManager.play(200, 0.5, 'sawtooth', 0.3);
+    } else if (gem.powerUpType === POWERUP_TYPES.COLOR_CLEAR) {
+        // Color clear clears all gems of target color
+        for (let row = 0; row < game.gridManager.rows; row++) {
+            for (let col = 0; col < game.gridManager.cols; col++) {
+                const targetGem = game.gridManager.getGem(row, col);
+                if (targetGem && targetGem.type === targetColor && !gemsToClear.includes(targetGem)) {
+                    gemsToClear.push(targetGem);
+                }
+            }
+        }
+        console.log(`🎨 COLOR CLEAR ACTIVATED! Clearing ${gemsToClear.length} ${GEM_COLORS[targetColor]} gems`);
+        // Play special sound
+        SoundManager.play(880, 0.1, 'sine', 0.2);
+        setTimeout(() => SoundManager.play(1100, 0.1, 'sine', 0.2), 100);
+        setTimeout(() => SoundManager.play(1320, 0.3, 'sine', 0.3), 200);
+    }
+
+    return gemsToClear;
+}
+
+// Add power-up creation to match processing
+function processPowerUpCreation(matches) {
+    const powerUpGems = [];
+
+    // Group matches by type and direction
+    const matchGroups = {};
+
+    for (const match of matches) {
+        const key = `${match.direction}-${match.matchType}-${match.gem.type}`;
+        if (!matchGroups[key]) {
+            matchGroups[key] = {
+                direction: match.direction,
+                matchType: match.matchType,
+                color: match.gem.type,
+                gems: []
+            };
+        }
+        matchGroups[key].gems.push(match.gem);
+    }
+
+    // Create power-ups for qualifying matches
+    for (const key in matchGroups) {
+        const group = matchGroups[key];
+        const powerUpType = getPowerUpForMatch(group.matchType, group.direction);
+
+        if (powerUpType !== POWERUP_TYPES.NONE) {
+            // Create power-up at the center of the match
+            const centerIndex = Math.floor(group.gems.length / 2);
+            const centerGem = group.gems[centerIndex];
+
+            // Mark the position for power-up creation
+            powerUpGems.push({
+                row: centerGem.row,
+                col: centerGem.col,
+                type: group.color,
+                powerUpType: powerUpType
+            });
+
+            console.log(`✨ Creating ${powerUpType} power-up at (${centerGem.row}, ${centerGem.col}) from ${group.matchType}-match`);
+        }
+    }
+
+    return powerUpGems;
+}
 
 // Reset combo count (called when player makes a new move)
 function resetCombo() {
@@ -797,10 +935,12 @@ class GridManager {
 
     /**
      * Create a gem object at the specified position
+     * Feature #20: Added powerUpType parameter for power-up gems
      */
-    createGem(row, col, type) {
+    createGem(row, col, type, powerUpType = POWERUP_TYPES.NONE) {
         return {
             type: type,
+            powerUpType: powerUpType,
             x: col * this.gemSize,
             y: row * this.gemSize,
             row: row,
@@ -1357,6 +1497,7 @@ function drawBucket(x, y, width, height) {
 
 /**
  * Draw a single gem with visual effects
+ * Feature #20: Added power-up visual indicators
  */
 function drawGem(gem) {
     const ctx = game.ctx;
@@ -1389,6 +1530,21 @@ function drawGem(gem) {
         ctx.shadowOffsetY = 0;
     }
 
+    // Feature #20: Draw power-up indicator first (behind gem)
+    if (gem.powerUpType === POWERUP_TYPES.BOMB) {
+        // Bomb glow effect
+        const pulseTime = performance.now() / 200;
+        const glowSize = size / 2 + Math.sin(pulseTime) * 3;
+
+        ctx.shadowColor = '#e74c3c';
+        ctx.shadowBlur = 20;
+    } else if (gem.powerUpType === POWERUP_TYPES.COLOR_CLEAR) {
+        // Color clear rainbow glow
+        const hue = (performance.now() / 10) % 360;
+        ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+        ctx.shadowBlur = 20;
+    }
+
     // Draw gem shape (rounded rectangle)
     ctx.fillStyle = colors[gem.type];
     ctx.beginPath();
@@ -1414,6 +1570,58 @@ function drawGem(gem) {
     ctx.beginPath();
     ctx.roundRect(-size / 2 + 4, -size / 2 + 2, size - 8, size / 3, 4);
     ctx.fill();
+
+    // Feature #20: Draw power-up icon on top
+    if (gem.powerUpType === POWERUP_TYPES.BOMB) {
+        // Bomb icon
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(0, 2, size / 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Fuse
+        ctx.fillStyle = '#f39c12';
+        ctx.beginPath();
+        ctx.moveTo(0, -size / 4 + 2);
+        ctx.lineTo(4, -size / 3);
+        ctx.lineTo(-4, -size / 3);
+        ctx.closePath();
+        ctx.fill();
+
+        // Spark
+        const sparkColor = ['#e74c3c', '#f39c12', '#f1c40f'][Math.floor(performance.now() / 100) % 3];
+        ctx.fillStyle = sparkColor;
+        ctx.beginPath();
+        ctx.arc(0, -size / 3 - 3, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Border to indicate power-up
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    } else if (gem.powerUpType === POWERUP_TYPES.COLOR_CLEAR) {
+        // Color palette icon
+        const iconSize = size / 3;
+        ctx.fillStyle = colors[gem.type];
+        ctx.beginPath();
+        ctx.arc(-iconSize / 2, -iconSize / 4, iconSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(iconSize / 2, -iconSize / 4, iconSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = colors[(gem.type + 1) % colors.length];
+        ctx.beginPath();
+        ctx.arc(0, iconSize / 4, iconSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Border to indicate power-up
+        ctx.strokeStyle = '#9b59b6';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    }
 
     ctx.restore();
 }
@@ -2526,6 +2734,7 @@ function handleCanvasClick(event) {
 /**
  * Swap two gems with smooth animation - Feature #8
  * Feature #19: Updated with combo system
+ * Feature #20: Updated with power-up system
  */
 async function swapGems(gem1, gem2) {
     // Prevent interaction during animation
@@ -2541,6 +2750,7 @@ async function swapGems(gem1, gem2) {
 
     // Store original positions for grid update after animation
     const tempType = game.grid[gem1.row][gem1.col].type;
+    const tempPowerUp = gem1.powerUpType;
     const tempRow = gem1.row;
     const tempCol = gem1.col;
 
@@ -2553,7 +2763,9 @@ async function swapGems(gem1, gem2) {
 
     // Update grid after animation
     game.grid[gem1.row][gem1.col].type = game.grid[gem2.row][gem2.col].type;
+    game.grid[gem1.row][gem1.col].powerUpType = game.grid[gem2.row][gem2.col].powerUpType;
     game.grid[gem2.row][gem2.col].type = tempType;
+    game.grid[gem2.row][gem2.col].powerUpType = tempPowerUp;
 
     // Update gem row/col properties
     gem1.row = gem2.row;
@@ -2569,31 +2781,86 @@ async function swapGems(gem1, gem2) {
 
     console.log(`Swapped gems at (${gem2.row}, ${gem2.col}) and (${gem1.row}, ${gem1.col})`);
 
+    // Feature #20: Check if power-up was activated (swapped with another gem)
+    let powerUpActivated = false;
+    let powerUpGemsToClear = [];
+    let powerUpGems = [gem1, gem2];
+
+    for (const gem of powerUpGems) {
+        if (gem.powerUpType !== POWERUP_TYPES.NONE) {
+            console.log(`✨ Power-up activated at (${gem.row}, ${gem.col}): ${gem.powerUpType}`);
+            powerUpActivated = true;
+            const activatedGems = activatePowerUp(gem);
+            powerUpGemsToClear.push(...activatedGems);
+        }
+    }
+
     // Check for matches after swap
     const matches = game.gridManager.findMatches();
-    if (matches.length > 0) {
-        console.log(`Match detected! Found ${matches.length} matched gems:`);
-        matches.forEach((match, index) => {
-            console.log(`  ${index + 1}. (${match.gem.row}, ${match.gem.col}) - ${match.direction} match of ${match.matchType}`);
-        });
+    const allGemsToClear = [...powerUpGemsToClear];
 
+    // Add matched gems to clear list (avoid duplicates)
+    if (matches.length > 0) {
         const uniqueGems = game.gridManager.getMatchedGems();
-        console.log(`Total unique gems to clear: ${uniqueGems.length}`);
-        
-        // Play match sound
-        SoundManager.match();
-        
+        for (const gem of uniqueGems) {
+            if (!allGemsToClear.includes(gem)) {
+                allGemsToClear.push(gem);
+            }
+        }
+    }
+
+    // Process if there's something to clear (match or power-up)
+    if (allGemsToClear.length > 0) {
+        if (matches.length > 0) {
+            console.log(`Match detected! Found ${matches.length} matched gems:`);
+            matches.forEach((match, index) => {
+                console.log(`  ${index + 1}. (${match.gem.row}, ${match.gem.col}) - ${match.direction} match of ${match.matchType}`);
+            });
+
+            const uniqueGems = game.gridManager.getMatchedGems();
+            console.log(`Total unique gems to clear: ${uniqueGems.length}`);
+        }
+
+        // Feature #20: Play appropriate sound
+        if (powerUpActivated) {
+            // Power-up sound is played in activatePowerUp
+        }
+        // Play match sound for regular matches
+        if (matches.length > 0 && !powerUpActivated) {
+            SoundManager.match();
+        }
+
         // Process the match cycle WITH animations - Feature #9
         console.log('\n--- Feature #9: Match Clear Animations ---');
+
+        // Feature #20: Handle power-up creation from matches
+        let powerUpsToCreate = [];
+        if (matches.length > 0) {
+            powerUpsToCreate = processPowerUpCreation(matches);
+        }
+
+        // Clear matched gems
         const cycleResult = await game.gridManager.animateMatchCycle();
+
+        // Feature #20: Create power-ups if any were earned
+        for (const pu of powerUpsToCreate) {
+            // Check if position is empty (not already filled)
+            if (game.grid[pu.row] && game.grid[pu.row][pu.col] === null) {
+                const powerUpGem = createPowerUpGem(pu.row, pu.col, pu.type, pu.powerUpType);
+                game.grid[pu.row][pu.col] = powerUpGem;
+                console.log(`✨ Created ${pu.powerUpType} power-up at (${pu.row}, ${pu.col})`);
+            }
+        }
 
         if (cycleResult.processed) {
             console.log('Match cycle result:', cycleResult);
         }
 
         // Decrement moves after a successful match
-        game.moves--;
-        console.log(`\nMoves remaining: ${game.moves}`);
+        if (matches.length > 0) {
+            game.moves--;
+            console.log(`\nMoves remaining: ${game.moves}`);
+        }
 
         // Check for cascade matches WITH animations
         let cascadeCount = 0;
@@ -2614,11 +2881,20 @@ async function swapGems(gem1, gem2) {
         console.log('--- Feature #9: Complete ---\n');
 
         // Feature #19: Add score based on matches WITH combo multiplier
-        const baseScore = uniqueGems.length * 10;
+        // Feature #20: Bonus for power-up activation
+        let baseScore = allGemsToClear.length * 10;
         const comboMultiplier = getComboMultiplier();
-        const scoreGained = Math.floor(baseScore * comboMultiplier);
+        let scoreGained = Math.floor(baseScore * comboMultiplier);
+
+        // Bonus points for power-up activation
+        if (powerUpActivated) {
+            const powerUpBonus = powerUpGemsToClear.length * 5;
+            scoreGained += powerUpBonus;
+            console.log(`💥 Power-up bonus: +${powerUpBonus} points`);
+        }
+
         game.score += scoreGained;
-        
+
         if (game.comboCount > 1) {
             console.log(`🎯 Score gained: ${baseScore} × ${comboMultiplier.toFixed(1)} = ${scoreGained}, Total: ${game.score}`);
         } else {
@@ -2631,6 +2907,20 @@ async function swapGems(gem1, gem2) {
 
         // Feature #7: Check win/lose conditions
         checkGameState();
+    } else if (powerUpActivated) {
+        // Power-up activated but no match - still count as a move
+        game.moves--;
+        console.log(`\nMoves remaining: ${game.moves}`);
+
+        // Feature #19: Increment combo on power-up activation
+        incrementCombo();
+
+        // Bonus: Add more time for power-ups
+        game.timer += 2;
+        console.log(`⏱️ Power-up bonus! +2s, Timer: ${game.timer}s`);
+
+        // Check win/lose conditions
+        checkGameState();
     } else {
         // No match - animate swap back
         console.log('No match detected, swapping back...');
@@ -2639,7 +2929,9 @@ async function swapGems(gem1, gem2) {
 
         // Swap back in grid
         game.grid[gem1.row][gem1.col].type = game.grid[gem2.row][gem2.col].type;
+        game.grid[gem1.row][gem1.col].powerUpType = game.grid[gem2.row][gem2.col].powerUpType;
         game.grid[gem2.row][gem2.col].type = tempType;
+        game.grid[gem2.row][gem2.col].powerUpType = tempPowerUp;
 
         gem1.row = tempRow;
         gem1.col = tempCol;
@@ -2701,6 +2993,9 @@ function init() {
     console.log('Pause functionality enabled - Feature #17 implemented');
     console.log('Settings modal enabled - Feature #18 implemented');
     console.log('Combo system enabled - Feature #19 implemented');
+    console.log('Power-ups enabled - Feature #20 implemented');
+    console.log('  - 💣 Bomb gems: Match 4 to create, clears 3x3 area');
+    console.log('  - 🎨 Color Clear gems: Match 5+ to create, clears all gems of one color');
     console.log('\n🎮 Click "PLAY" to start the game! 60 seconds on the clock!');
     console.log('Press ESC or P to pause the game');
     
