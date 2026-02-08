@@ -62,6 +62,110 @@ const ANIMATION = {
     SELECTION_PULSE_DURATION: 600 // ms for selection pulse animation
 };
 
+// Sound Manager - Feature #12: Sound Effects
+const SoundManager = {
+    audioContext: null,
+    enabled: true,
+    masterVolume: 0.3,
+    
+    init() {
+        // Initialize Web Audio API on first user interaction
+        if (!this.audioContext) {
+            try {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('Audio context initialized');
+            } catch (e) {
+                console.warn('Web Audio API not supported');
+                this.enabled = false;
+            }
+        }
+        // Resume audio context if suspended (browser policy)
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+    },
+    
+    play(frequency, duration, type = 'sine', volume = null) {
+        if (!this.enabled || !this.audioContext) return;
+        
+        try {
+            const osc = this.audioContext.createOscillator();
+            const gainNode = this.audioContext.createGain();
+            
+            osc.type = type;
+            osc.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+            
+            // Apply master volume
+            const vol = volume !== null ? volume : this.masterVolume;
+            gainNode.gain.setValueAtTime(vol, this.audioContext.currentTime);
+            
+            // Sound envelope - fade out
+            gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+            
+            osc.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            osc.start();
+            osc.stop(this.audioContext.currentTime + duration);
+        } catch (e) {
+            // Silently fail if audio fails
+        }
+    },
+    
+    // Sound effects
+    select() {
+        // High-pitched blip for gem selection
+        this.play(880, 0.1, 'sine', 0.2);
+    },
+    
+    swap() {
+        // Swishing sound for swap
+        this.play(440, 0.15, 'triangle', 0.15);
+    },
+    
+    swapFail() {
+        // Lower "thud" for failed swap
+        this.play(220, 0.2, 'square', 0.1);
+    },
+    
+    match() {
+        // Pleasant chime for match (ascending arpeggio)
+        this.play(523.25, 0.1, 'sine', 0.25); // C5
+        setTimeout(() => this.play(659.25, 0.1, 'sine', 0.25), 50);  // E5
+        setTimeout(() => this.play(783.99, 0.15, 'sine', 0.25), 100); // G5
+    },
+    
+    cascade() {
+        // More dramatic sound for cascades/combos
+        this.play(392, 0.08, 'sine', 0.2);   // G4
+        setTimeout(() => this.play(523.25, 0.08, 'sine', 0.2), 40);  // C5
+        setTimeout(() => this.play(659.25, 0.08, 'sine', 0.2), 80);  // E5
+        setTimeout(() => this.play(783.99, 0.08, 'sine', 0.2), 120); // G5
+        setTimeout(() => this.play(1046.5, 0.2, 'sine', 0.25), 160); // C6
+    },
+    
+    levelComplete() {
+        // Victory fanfare
+        const notes = [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5];
+        notes.forEach((freq, i) => {
+            setTimeout(() => this.play(freq, 0.3, 'sine', 0.3), i * 100);
+        });
+    },
+    
+    gameOver() {
+        // Sad descending sound
+        this.play(392, 0.3, 'triangle', 0.2);
+        setTimeout(() => this.play(349.23, 0.3, 'triangle', 0.2), 150);
+        setTimeout(() => this.play(293.66, 0.4, 'triangle', 0.2), 300);
+    },
+    
+    toggle() {
+        this.enabled = !this.enabled;
+        console.log('Sound effects:', this.enabled ? 'enabled' : 'disabled');
+        return this.enabled;
+    }
+};
+
 // Selection animation state
 const selectionAnimation = {
     active: false,
@@ -1149,6 +1253,7 @@ function checkGameState() {
     // Check win condition
     if (game.score >= game.targetScore) {
         game.gameState = GAME_STATE.WON;
+        SoundManager.levelComplete();
         console.log(`🎉 LEVEL COMPLETE! You reached ${game.score} points!`);
         return true;
     }
@@ -1156,6 +1261,7 @@ function checkGameState() {
     // Check lose condition
     if (game.moves <= 0 && game.score < game.targetScore) {
         game.gameState = GAME_STATE.LOST;
+        SoundManager.gameOver();
         console.log(`💀 GAME OVER! Score: ${game.score}/${game.targetScore}`);
         return true;
     }
@@ -1349,6 +1455,10 @@ function handleCanvasClick(event) {
         game.selectedGem = clickedGem;
         // Reset selection animation for fresh pulse
         selectionAnimation.startTime = performance.now();
+        // Initialize audio context on first interaction
+        SoundManager.init();
+        // Play selection sound
+        SoundManager.select();
     } else {
         // Second click - try to swap
         const selectedGem = game.selectedGem;
@@ -1366,6 +1476,7 @@ function handleCanvasClick(event) {
         if ((rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1)) {
             // Adjacent - perform swap with animation
             game.selectedGem = null;
+            SoundManager.swap();
             swapGems(selectedGem, clickedGem);
         } else {
             // Not adjacent - select the new gem instead
@@ -1428,7 +1539,10 @@ async function swapGems(gem1, gem2) {
 
         const uniqueGems = game.gridManager.getMatchedGems();
         console.log(`Total unique gems to clear: ${uniqueGems.length}`);
-
+        
+        // Play match sound
+        SoundManager.match();
+        
         // Process the match cycle WITH animations - Feature #9
         console.log('\n--- Feature #9: Match Clear Animations ---');
         const cycleResult = await game.gridManager.animateMatchCycle();
@@ -1444,6 +1558,8 @@ async function swapGems(gem1, gem2) {
         // Check for cascade matches WITH animations
         const totalCleared = await game.gridManager.animateCascade();
         if (totalCleared > 0) {
+            // Play cascade sound for chain reactions
+            SoundManager.cascade();
             console.log(`Animated cascade complete! Total gems cleared: ${totalCleared}`);
         }
 
@@ -1459,6 +1575,7 @@ async function swapGems(gem1, gem2) {
     } else {
         // No match - animate swap back
         console.log('No match detected, swapping back...');
+        SoundManager.swapFail();
         await animateSwap(gem1, gem2);
 
         // Swap back in grid
@@ -1513,8 +1630,17 @@ function init() {
     console.log('Smooth swap animations enabled - Feature #8 implemented');
     console.log('Match clear animations enabled - Feature #9 implemented');
     console.log('Gem falling animation enabled - Feature #10 implemented');
+    console.log('Sound effects enabled - Feature #12 implemented');
     console.log('Target score:', game.targetScore);
     console.log('Click handling enabled for gem selection and swapping');
+    
+    // Keyboard shortcut for toggling sound (press 'M')
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'm' || e.key === 'M') {
+            SoundManager.init();
+            SoundManager.toggle();
+        }
+    });
 
     // Start the game loop
     gameLoop();
