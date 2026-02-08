@@ -392,6 +392,7 @@ function animateSwap(gem1, gem2) {
         animation.onComplete = () => {
             game.animatingGems.delete(gem1);
             game.animatingGems.delete(gem2);
+            game.swapInProgress = null; // Clear to prevent double-callback in processAnimations
             resolve();
         };
 
