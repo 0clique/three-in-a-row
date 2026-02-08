@@ -1425,6 +1425,7 @@ function checkGameState() {
         stopTimer(); // Stop timer on win
         game.gameState = GAME_STATE.WON;
         SoundManager.levelComplete();
+        initConfetti(); // Feature #15: Start confetti celebration
         console.log(`🎉 LEVEL COMPLETE! You reached ${game.score} points!`);
         return true;
     }
@@ -1489,45 +1490,257 @@ function drawGameOverOverlay() {
     ctx.fillText('Click to restart', CONFIG.canvasWidth / 2, y + 170);
 }
 
+// Level complete animation state
+const levelCompleteAnimation = {
+    starsEarned: 0,
+    starDelay: 0,
+    confetti: [],
+    showConfetti: false
+};
+
+// Calculate stars based on score (1-3 stars)
+function calculateStars(score, target) {
+    const ratio = score / target;
+    if (ratio >= 2) return 3;      // Double target = 3 stars
+    if (ratio >= 1.5) return 2.5;  // 1.5x target = 2.5 stars
+    if (ratio >= 1) return 2;      // At target = 2 stars
+    return 1;                       // Below target = 1 star (minimum)
+}
+
+// Confetti particle class
+class ConfettiParticle {
+    constructor() {
+        this.x = Math.random() * CONFIG.canvasWidth;
+        this.y = -10;
+        this.size = Math.random() * 8 + 4;
+        this.speedY = Math.random() * 3 + 2;
+        this.speedX = (Math.random() - 0.5) * 2;
+        this.color = GEM_COLORS[Math.floor(Math.random() * GEM_COLORS.length)];
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.2;
+    }
+
+    update() {
+        this.y += this.speedY;
+        this.x += this.speedX;
+        this.rotation += this.rotationSpeed;
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+        ctx.restore();
+    }
+}
+
+// Initialize confetti for level complete
+function initConfetti() {
+    levelCompleteAnimation.confetti = [];
+    for (let i = 0; i < 50; i++) {
+        levelCompleteAnimation.confetti.push(new ConfettiParticle());
+    }
+    levelCompleteAnimation.showConfetti = true;
+}
+
+// Update and draw confetti
+function updateConfetti(ctx) {
+    if (!levelCompleteAnimation.showConfetti) return;
+
+    const remaining = [];
+    for (const particle of levelCompleteAnimation.confetti) {
+        particle.update();
+        particle.draw(ctx);
+        if (particle.y < CONFIG.canvasHeight + 10) {
+            remaining.push(particle);
+        }
+    }
+    levelCompleteAnimation.confetti = remaining;
+}
+
+// Stop confetti when animation ends
+function stopConfetti() {
+    levelCompleteAnimation.showConfetti = false;
+}
+
 /**
- * Draw level complete overlay
+ * Feature #15: Enhanced Level Complete Screen with stars, stats, and animations
  */
 function drawLevelCompleteOverlay() {
     const ctx = game.ctx;
-    const overlayWidth = 320;
-    const overlayHeight = 220;
+    const overlayWidth = 360;
+    const overlayHeight = 340;
     const x = (CONFIG.canvasWidth - overlayWidth) / 2;
     const y = (CONFIG.canvasHeight - overlayHeight) / 2;
 
+    // Draw confetti in background
+    updateConfetti(ctx);
+
     // Semi-transparent overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
 
-    // Modal background
-    ctx.fillStyle = CONFIG.bucketColor;
+    // Modal background with gradient
+    const gradient = ctx.createLinearGradient(x, y, x, y + overlayHeight);
+    gradient.addColorStop(0, '#2d3436');
+    gradient.addColorStop(1, '#1a1a2e');
+    ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.roundRect(x, y, overlayWidth, overlayHeight, 12);
+    ctx.roundRect(x, y, overlayWidth, overlayHeight, 16);
     ctx.fill();
-    ctx.strokeStyle = CONFIG.bucketBorderColor;
-    ctx.lineWidth = 2;
+
+    // Modal border
+    ctx.strokeStyle = '#2ecc71';
+    ctx.lineWidth = 3;
     ctx.stroke();
 
-    // Title
+    // Animated "LEVEL COMPLETE!" title with glow
+    ctx.shadowColor = '#2ecc71';
+    ctx.shadowBlur = 20;
     ctx.fillStyle = '#2ecc71';
-    ctx.font = 'bold 28px Arial';
+    ctx.font = 'bold 32px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('LEVEL COMPLETE!', CONFIG.canvasWidth / 2, y + 60);
+    ctx.fillText('LEVEL COMPLETE!', CONFIG.canvasWidth / 2, y + 50);
+    ctx.shadowBlur = 0;
 
-    // Score display
+    // Draw star rating
+    const starsY = y + 100;
+    const starSpacing = 50;
+    const starsX = CONFIG.canvasWidth / 2 - starSpacing;
+
+    // Calculate stars based on performance
+    const stars = calculateStars(game.score, game.targetScore);
+    levelCompleteAnimation.starsEarned = stars;
+
+    // Draw star containers (empty stars)
+    for (let i = 0; i < 3; i++) {
+        const starX = starsX + i * starSpacing;
+        ctx.beginPath();
+        ctx.arc(starX, starsY, 20, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fill();
+    }
+
+    // Animate stars filling in
+    const starRevealDelay = 300; // ms between each star
+    const elapsed = performance.now();
+    const starReveals = Math.min(3, Math.floor(elapsed / starRevealDelay) + 1);
+
+    for (let i = 0; i < 3; i++) {
+        const starX = starsX + i * starSpacing;
+
+        // Determine if this star should be shown
+        let showStar = false;
+        if (i < Math.floor(stars)) {
+            showStar = true; // Full stars always show
+        } else if (i === Math.floor(stars) && stars % 1 >= 0.5) {
+            showStar = true; // Half star
+        }
+
+        if (showStar) {
+            // Star glow effect
+            ctx.shadowColor = '#f1c40f';
+            ctx.shadowBlur = 15;
+
+            // Draw filled star
+            ctx.beginPath();
+            for (let j = 0; j < 5; j++) {
+                const angle = (j * 4 * Math.PI) / 5 - Math.PI / 2;
+                const radius = j % 2 === 0 ? 20 : 10;
+                const px = starX + Math.cos(angle) * radius;
+                const py = starsY + Math.sin(angle) * radius;
+                if (j === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fillStyle = stars % 1 >= 0.5 && i === Math.floor(stars) ?
+                'url(#halfStarGradient)' : '#f1c40f';
+            ctx.fill();
+
+            // Solid gold fill for full stars
+            if (!(stars % 1 >= 0.5 && i === Math.floor(stars))) {
+                ctx.fillStyle = '#f1c40f';
+                ctx.fill();
+            }
+
+            ctx.shadowBlur = 0;
+
+            // Star outline
+            ctx.strokeStyle = '#d4a312';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    }
+
+    // Score display with nice formatting
+    const scoreY = y + 160;
     ctx.fillStyle = '#ffffff';
-    ctx.font = '20px Arial';
-    ctx.fillText(`Final Score: ${game.score}`, CONFIG.canvasWidth / 2, y + 110);
-    ctx.fillText(`Target: ${game.targetScore}`, CONFIG.canvasWidth / 2, y + 140);
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText(`${game.score}`, CONFIG.canvasWidth / 2, scoreY);
 
-    // Restart hint
+    // Score label
     ctx.fillStyle = '#aaaaaa';
-    ctx.font = '16px Arial';
-    ctx.fillText('Click to continue to next level', CONFIG.canvasWidth / 2, y + 180);
+    ctx.font = '14px Arial';
+    ctx.fillText('FINAL SCORE', CONFIG.canvasWidth / 2, scoreY + 20);
+
+    // Stats row - time and moves
+    const statsY = y + 220;
+    ctx.fillStyle = '#888888';
+    ctx.font = '12px Arial';
+
+    // Time bonus
+    const timeBonus = game.timer * 10;
+    ctx.fillStyle = game.timer > 10 ? '#2ecc71' : '#f1c40f';
+    ctx.fillText(`Time Bonus: +${timeBonus}`, CONFIG.canvasWidth / 2 - 80, statsY);
+
+    // Divider
+    ctx.fillStyle = '#444444';
+    ctx.fillRect(CONFIG.canvasWidth / 2 - 10, statsY - 15, 2, 30);
+
+    // Moves remaining
+    ctx.fillStyle = '#3498db';
+    ctx.fillText(`Moves Left: ${game.moves}`, CONFIG.canvasWidth / 2 + 80, statsY);
+
+    // Next Level button
+    const btnWidth = 200;
+    const btnHeight = 45;
+    const btnX = (CONFIG.canvasWidth - btnWidth) / 2;
+    const btnY = y + 260;
+
+    // Button hover effect
+    const rect = game.canvas.getBoundingClientRect();
+    const mouseX = (game.lastMouseX || 0) - rect.left;
+    const mouseY = (game.lastMouseY || 0) - rect.top;
+    const isHovering = mouseX >= btnX && mouseX <= btnX + btnWidth &&
+                       mouseY >= btnY && mouseY <= btnY + btnHeight;
+
+    // Button shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.roundRect(btnX + 3, btnY + 3, btnWidth, btnHeight, 8);
+    ctx.fill();
+
+    // Button background with gradient
+    const btnGradient = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnHeight);
+    btnGradient.addColorStop(0, isHovering ? '#27ae60' : '#2ecc71');
+    btnGradient.addColorStop(1, isHovering ? '#1e8449' : '#27ae60');
+    ctx.fillStyle = btnGradient;
+    ctx.beginPath();
+    ctx.roundRect(btnX, btnY, btnWidth, btnHeight, 8);
+    ctx.fill();
+
+    // Button text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText('NEXT LEVEL →', CONFIG.canvasWidth / 2, btnY + 29);
+}
+
+// Store mouse position for hover effects
+if (typeof game !== 'undefined') {
+    game.lastMouseX = 0;
+    game.lastMouseY = 0;
 }
 
 /**
@@ -1618,6 +1831,49 @@ function handleCanvasClick(event) {
             }
 
             console.log('\n🎮 Starting game! Level 1 - Target: 1000 points - Time: 60 seconds');
+        }
+        return;
+    }
+
+    // Feature #15: Handle level complete screen clicks
+    if (game.gameState === GAME_STATE.WON) {
+        const rect = game.canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+
+        // Check if Next Level button was clicked
+        const overlayWidth = 360;
+        const overlayHeight = 340;
+        const overlayX = (CONFIG.canvasWidth - overlayWidth) / 2;
+        const overlayY = (CONFIG.canvasHeight - overlayHeight) / 2;
+        const btnWidth = 200;
+        const btnHeight = 45;
+        const btnX = (CONFIG.canvasWidth - btnWidth) / 2;
+        const btnY = overlayY + 260;
+
+        if (clickX >= btnX && clickX <= btnX + btnWidth &&
+            clickY >= btnY && clickY <= btnY + btnHeight) {
+            // Next Level button clicked - play sound and advance
+            SoundManager.play(659.25, 0.1, 'sine', 0.3);
+
+            // Stop confetti
+            stopConfetti();
+
+            // Advance to next level
+            game.level++;
+            game.moves = 30;
+            game.targetScore = 1000 + (game.level - 1) * 500;
+            console.log(`\n🚀 Starting Level ${game.level}! Target: ${game.targetScore}`);
+
+            // Reset game state
+            game.gameState = GAME_STATE.PLAYING;
+            resetTimer();
+            startTimer();
+
+            // Reinitialize the grid
+            game.gridManager.initialize();
+            game.grid = game.gridManager.getGrid();
+            game.selectedGem = null;
         }
         return;
     }
@@ -1844,6 +2100,13 @@ function init() {
     // Add click event listener
     game.canvas.addEventListener('click', handleCanvasClick);
 
+    // Add mouse move listener for hover effects
+    game.canvas.addEventListener('mousemove', (event) => {
+        const rect = game.canvas.getBoundingClientRect();
+        game.lastMouseX = event.clientX - rect.left;
+        game.lastMouseY = event.clientY - rect.top;
+    });
+
     // Log initialization for debugging
     console.log('Three-in-a-Row Game initialized');
     console.log('Grid size:', CONFIG.gridRows, 'x', CONFIG.gridCols);
@@ -1857,6 +2120,7 @@ function init() {
     console.log('Sound effects enabled - Feature #12 implemented');
     console.log('Start screen enabled - Feature #13 implemented');
     console.log('HUD with timer enabled - Feature #14 implemented');
+    console.log('Level complete screen enabled - Feature #15 implemented');
     console.log('\n🎮 Click "PLAY" to start the game! 60 seconds on the clock!');
     
     // Keyboard shortcut for toggling sound (press 'M')
