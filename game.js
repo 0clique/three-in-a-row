@@ -97,13 +97,252 @@ const game = {
     comboCount: 0,           // Current combo multiplier (1 = no combo)
     comboTimer: null,        // Timer to reset combo
     maxCombo: 0,             // Highest combo achieved this level
-    comboMessages: []        // Active combo popup messages
+    comboMessages: [],        // Active combo popup messages
+    // Currency - Feature #21
+    gems: 0,                  // Premium currency
+    coins: 0                   // Regular currency
 };
 
 // Feature #20: Power-up system
 const powerUpSystem = {
     activeEffects: [],  // Active power-up effects for animation
     pendingPowerUps: [] // Power-ups to be created after match
+};
+
+// Feature #21: Currency system
+const CURRENCY = {
+    GEMS: 'gems',  // Premium currency
+    COINS: 'coins' // Regular currency
+};
+
+// Feature #22: Achievements system
+const ACHIEVEMENTS = {
+    // Score achievements
+    SCORE_1000: { id: 'score_1000', name: 'Getting Started', desc: 'Score 1,000 points', icon: '⭐', condition: (stats) => stats.totalScore >= 1000, reward: 50 },
+    SCORE_5000: { id: 'score_5000', name: 'High Scorer', desc: 'Score 5,000 points', icon: '🌟', condition: (stats) => stats.totalScore >= 5000, reward: 100 },
+    SCORE_10000: { id: 'score_10000', name: 'Master Player', desc: 'Score 10,000 points', icon: '💎', condition: (stats) => stats.totalScore >= 10000, reward: 200 },
+    
+    // Level achievements
+    LEVEL_5: { id: 'level_5', name: 'Rising Star', desc: 'Reach level 5', icon: '📈', condition: (stats) => stats.maxLevel >= 5, reward: 50 },
+    LEVEL_10: { id: 'level_10', name: 'Expert', desc: 'Reach level 10', icon: '🏆', condition: (stats) => stats.maxLevel >= 10, reward: 100 },
+    LEVEL_25: { id: 'level_25', name: 'Legend', desc: 'Reach level 25', icon: '👑', condition: (stats) => stats.maxLevel >= 25, reward: 250 },
+    
+    // Combo achievements
+    COMBO_5: { id: 'combo_5', name: 'Combo Breaker', desc: 'Get a 5x combo', icon: '🔥', condition: (stats) => stats.maxCombo >= 5, reward: 75 },
+    COMBO_10: { id: 'combo_10', name: 'Chain Master', desc: 'Get a 10x combo', icon: '⚡', condition: (stats) => stats.maxCombo >= 10, reward: 150 },
+    COMBO_20: { id: 'combo_20', name: 'Unstoppable', desc: 'Get a 20x combo', icon: '💥', condition: (stats) => stats.maxCombo >= 20, reward: 300 },
+    
+    // Gameplay achievements
+    GAMES_PLAYED_10: { id: 'games_10', name: 'Regular Player', desc: 'Play 10 games', icon: '🎮', condition: (stats) => stats.gamesPlayed >= 10, reward: 50 },
+    GAMES_PLAYED_50: { id: 'games_50', name: 'Dedicated', desc: 'Play 50 games', icon: '🎯', condition: (stats) => stats.gamesPlayed >= 50, reward: 150 },
+    GAMES_PLAYED_100: { id: 'games_100', name: 'True Fan', desc: 'Play 100 games', icon: '🏅', condition: (stats) => stats.gamesPlayed >= 100, reward: 300 },
+    
+    // Special achievements
+    PERFECT_GAME: { id: 'perfect', name: 'Perfect Game', desc: 'Complete a level with max score', icon: '💯', condition: (stats) => stats.perfectLevels >= 1, reward: 100 },
+    NO_MOVES_LEFT: { id: 'no_moves', name: 'Last Ditch', desc: 'Win with 1 move left', icon: '😮', condition: (stats) => stats.winsWithOneMove >= 1, reward: 200 },
+    
+    // Power-up achievements
+    USE_BOMB: { id: 'use_bomb', name: 'Boom!', desc: 'Use a bomb power-up', icon: '💣', condition: (stats) => stats.powerUpsUsed.bomb >= 1, reward: 50 },
+    USE_COLOR_CLEAR: { id: 'use_color', name: 'Rainbow', desc: 'Use a color clear power-up', icon: '🌈', condition: (stats) => stats.powerUpsUsed.colorClear >= 1, reward: 75 },
+    POWERUP_MASTER: { id: 'powerup_master', name: 'Power User', desc: 'Use 10 power-ups', icon: '🚀', condition: (stats) => (stats.powerUpsUsed.bomb + stats.powerUpsUsed.colorClear) >= 10, reward: 200 }
+};
+
+const AchievementManager = {
+    stats: {
+        totalScore: 0,
+        maxLevel: 1,
+        maxCombo: 0,
+        gamesPlayed: 0,
+        perfectLevels: 0,
+        winsWithOneMove: 0,
+        powerUpsUsed: { bomb: 0, colorClear: 0 }
+    },
+    unlocked: new Set(),
+    
+    init() {
+        // Load from localStorage
+        const saved = localStorage.getItem('threeInRow_achievements');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.stats = data.stats || this.stats;
+            this.unlocked = new Set(data.unlocked || []);
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_achievements', JSON.stringify({
+            stats: this.stats,
+            unlocked: Array.from(this.unlocked)
+        }));
+    },
+    
+    updateStat(stat, value) {
+        this.stats[stat] = value;
+        this.checkAchievements();
+        this.save();
+    },
+    
+    incrementStat(stat) {
+        if (typeof this.stats[stat] === 'number') {
+            this.stats[stat]++;
+            this.checkAchievements();
+            this.save();
+        }
+    },
+    
+    checkAchievements() {
+        for (const [key, achievement] of Object.entries(ACHIEVEMENTS)) {
+            if (!this.unlocked.has(achievement.id) && achievement.condition(this.stats)) {
+                this.unlock(achievement);
+            }
+        }
+    },
+    
+    unlock(achievement) {
+        this.unlocked.add(achievement.id);
+        // Award reward
+        game.coins = (game.coins || 0) + achievement.reward;
+        // Show notification
+        showNotification(`🏆 Achievement: ${achievement.name}\n+${achievement.reward} coins!`, 4000);
+        SoundManager.achievement();
+    },
+    
+    getProgress() {
+        const total = Object.keys(ACHIEVEMENTS).length;
+        return {
+            unlocked: this.unlocked.size,
+            total: total,
+            percentage: Math.round((this.unlocked.size / total) * 100)
+        };
+    },
+    
+    reset() {
+        this.stats = {
+            totalScore: 0,
+            maxLevel: 1,
+            maxCombo: 0,
+            gamesPlayed: 0,
+            perfectLevels: 0,
+            winsWithOneMove: 0,
+            powerUpsUsed: { bomb: 0, colorClear: 0 }
+        };
+        this.unlocked = new Set();
+        this.save();
+    }
+};
+
+// Feature #23: Shop system
+const SHOP_ITEMS = {
+    // One-time purchases
+    EXTRA_MOVES_5: { id: 'extra_moves_5', name: '+5 Moves', desc: 'Start with 5 extra moves', icon: '👟', price: 50, type: 'start_bonus', value: 5 },
+    STARTING_TIME_15: { id: 'start_time_15', name: '+15s Time', desc: 'Start with 15 extra seconds', icon: '⏱️', price: 75, type: 'start_bonus', value: 15 },
+    SCORE_BOOST_2X: { id: 'score_2x', name: '2x Score', desc: '2x score multiplier for one game', icon: '✨', price: 150, type: 'one_time', value: 2 },
+    
+    // Consumables (buy with gems)
+    GEMS_100: { id: 'gems_100', name: '100 Gems', desc: 'Get 100 premium gems', icon: '💎', price: 0, type: 'currency', value: 100 },
+    GEMS_500: { id: 'gems_500', name: '500 Gems', desc: 'Get 500 premium gems', icon: '💎', value: 500, price: 0, type: 'currency' },
+    
+    // Permanent upgrades
+    PERMANENT_MOVES_2: { id: 'perm_moves_2', name: 'Pro Moves', desc: '+2 moves permanently', icon: '💪', price: 500, type: 'permanent', stat: 'moves', value: 2 },
+    PERMANENT_TIME_10: { id: 'perm_time_10', name: 'Time Master', desc: '+10s timer permanently', icon: '🕐', price: 750, type: 'permanent', stat: 'timer', value: 10 },
+    PERMANENT_COMBO: { id: 'perm_combo', name: 'Combo King', desc: '+1 combo multiplier', icon: '👑', price: 1000, type: 'permanent', stat: 'combo', value: 1 }
+};
+
+const ShopManager = {
+    purchased: new Set(),
+    activeBoosts: {
+        extraMoves: 0,
+        extraTime: 0,
+        scoreMultiplier: 1
+    },
+    permanentStats: {
+        moves: 0,
+        timer: 0,
+        combo: 0
+    },
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_shop');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.purchased = new Set(data.purchased || []);
+            this.activeBoosts = data.activeBoosts || this.activeBoosts;
+            this.permanentStats = data.permanentStats || this.permanentStats;
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_shop', JSON.stringify({
+            purchased: Array.from(this.purchased),
+            activeBoosts: this.activeBoosts,
+            permanentStats: this.permanentStats
+        }));
+    },
+    
+    canAfford(item) {
+        if (item.price === 0) return true; // Free items
+        const currency = item.priceType === 'gems' ? (game.gems || 0) : (game.coins || 0);
+        return currency >= item.price;
+    },
+    
+    buy(itemId) {
+        const item = SHOP_ITEMS[itemId];
+        if (!item) return false;
+        if (!this.canAfford(item)) {
+            showNotification('Not enough currency!', 2000);
+            return false;
+        }
+        
+        // Deduct currency
+        if (item.price > 0) {
+            if (item.priceType === 'gems') {
+                game.gems = (game.gems || 0) - item.price;
+            } else {
+                game.coins = (game.coins || 0) - item.price;
+            }
+        }
+        
+        // Apply purchase
+        if (item.type === 'start_bonus') {
+            this.activeBoosts.extraMoves += item.value;
+        } else if (item.type === 'one_time') {
+            this.activeBoosts.scoreMultiplier = item.value;
+        } else if (item.type === 'permanent') {
+            this.permanentStats[item.stat] += item.value;
+            this.purchased.add(itemId);
+        } else if (item.type === 'currency') {
+            game.gems = (game.gems || 0) + item.value;
+        }
+        
+        this.save();
+        showNotification(`Purchased: ${item.name}!`, 2000);
+        SoundManager.purchase();
+        return true;
+    },
+    
+    resetBoosts() {
+        this.activeBoosts = { extraMoves: 0, extraTime: 0, scoreMultiplier: 1 };
+        this.save();
+    },
+    
+    resetAll() {
+        this.purchased = new Set();
+        this.activeBoosts = { extraMoves: 0, extraTime: 0, scoreMultiplier: 1 };
+        this.permanentStats = { moves: 0, timer: 0, combo: 0 };
+        this.save();
+    },
+    
+    getBonusMoves() {
+        return 30 + (this.activeBoosts.extraMoves || 0) + (this.permanentStats.moves || 0);
+    },
+    
+    getBonusTime() {
+        return 60 + (this.activeBoosts.extraTime || 0) + (this.permanentStats.timer || 0);
+    },
+    
+    getComboBonus() {
+        return this.permanentStats.combo || 0;
+    }
 };
 
 // Animation configuration
@@ -115,6 +354,55 @@ const ANIMATION = {
     FALL_DURATION: 150,          // ms per cell for falling gems
     SELECTION_PULSE_DURATION: 600 // ms for selection pulse animation
 };
+
+// Notification system
+let notificationTimeout = null;
+function showNotification(message, duration = 3000) {
+    // Remove any existing notification
+    const existing = document.getElementById('game-notification');
+    if (existing) existing.remove();
+    if (notificationTimeout) clearTimeout(notificationTimeout);
+    
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.id = 'game-notification';
+    notification.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.85);
+        color: #fff;
+        padding: 20px 30px;
+        border-radius: 12px;
+        border: 2px solid #f1c40f;
+        font-size: 16px;
+        text-align: center;
+        z-index: 200;
+        max-width: 300px;
+        white-space: pre-line;
+        animation: notificationPopIn 0.3s ease-out;
+    `;
+    
+    // Add animation keyframes
+    if (!document.getElementById('notification-styles')) {
+        const style = document.createElement('style');
+        style.id = 'notification-styles';
+        style.textContent = `
+            @keyframes notificationPopIn {
+                from { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+                to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(notification);
+    
+    notificationTimeout = setTimeout(() => {
+        notification.remove();
+    }, duration);
+}
 
 // Sound Manager - Feature #12: Sound Effects
 const SoundManager = {
@@ -215,6 +503,20 @@ const SoundManager = {
         setTimeout(() => this.play(293.66, 0.4, 'triangle', 0.2), 300);
     },
     
+    achievement() {
+        // Triumphant achievement sound
+        this.play(523.25, 0.15, 'sine', 0.3);
+        setTimeout(() => this.play(659.25, 0.15, 'sine', 0.3), 100);
+        setTimeout(() => this.play(783.99, 0.2, 'sine', 0.35), 200);
+        setTimeout(() => this.play(1046.5, 0.4, 'sine', 0.4), 350);
+    },
+    
+    purchase() {
+        // Pleasant "ding" for purchase
+        this.play(880, 0.1, 'sine', 0.3);
+        setTimeout(() => this.play(1100, 0.15, 'sine', 0.25), 80);
+    },
+    
     toggle() {
         this.enabled = !this.enabled;
         console.log('Sound effects:', this.enabled ? 'enabled' : 'disabled');
@@ -282,6 +584,120 @@ const SettingsManager = {
         
         console.log('Settings Manager initialized');
     }
+};
+
+// Achievement Manager - Feature #22
+AchievementManager.toggle = function() {
+    this.isOpen = !this.isOpen;
+    const modal = document.getElementById('achievements-modal');
+    if (modal) {
+        modal.classList.toggle('hidden', !this.isOpen);
+        if (this.isOpen) {
+            this.render();
+        }
+    }
+    console.log('Achievements modal:', this.isOpen ? 'opened' : 'closed');
+};
+
+AchievementManager.render = function() {
+    const progressEl = document.getElementById('achievements-progress');
+    const listEl = document.getElementById('achievements-list');
+    if (!progressEl || !listEl) return;
+    
+    const progress = this.getProgress();
+    progressEl.textContent = `Progress: ${progress.unlocked}/${progress.total} (${progress.percentage}%)`;
+    
+    listEl.innerHTML = '';
+    for (const [key, achievement] of Object.entries(ACHIEVEMENTS)) {
+        const unlocked = this.unlocked.has(achievement.id);
+        const item = document.createElement('div');
+        item.className = `achievement-item ${unlocked ? 'unlocked' : 'locked'}`;
+        item.innerHTML = `
+            <div class="achievement-icon">${achievement.icon}</div>
+            <div class="achievement-info">
+                <div class="achievement-name">${achievement.name}</div>
+                <div class="achievement-desc">${achievement.desc}</div>
+                <div class="achievement-reward">+${achievement.reward} coins</div>
+            </div>
+        `;
+        listEl.appendChild(item);
+    }
+};
+
+AchievementManager.init = function() {
+    this.init();
+    const modal = document.getElementById('achievements-modal');
+    if (modal) {
+        const closeBtn = document.getElementById('close-achievements');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+    }
+    console.log('Achievement Manager initialized');
+};
+
+// Shop Manager - Feature #23
+ShopManager.toggle = function() {
+    this.isOpen = !this.isOpen;
+    const modal = document.getElementById('shop-modal');
+    if (modal) {
+        modal.classList.toggle('hidden', !this.isOpen);
+        if (this.isOpen) {
+            this.render();
+        }
+    }
+    console.log('Shop modal:', this.isOpen ? 'opened' : 'closed');
+};
+
+ShopManager.render = function() {
+    const gemsEl = document.getElementById('shop-gems');
+    const coinsEl = document.getElementById('shop-coins');
+    const listEl = document.getElementById('shop-list');
+    if (!gemsEl || !coinsEl || !listEl) return;
+    
+    gemsEl.textContent = game.gems || 0;
+    coinsEl.textContent = game.coins || 0;
+    
+    listEl.innerHTML = '';
+    for (const [key, item] of Object.entries(SHOP_ITEMS)) {
+        const canAfford = this.canAfford(item);
+        const btnClass = canAfford ? 'shop-item-buy' : 'shop-item-buy disabled';
+        const btnText = item.price > 0 
+            ? (item.priceType === 'gems' ? `💎 ${item.price}` : `🪙 ${item.price}`)
+            : 'FREE';
+        
+        const div = document.createElement('div');
+        div.className = 'shop-item';
+        div.innerHTML = `
+            <div class="shop-item-icon">${item.icon}</div>
+            <div class="shop-item-info">
+                <div class="shop-item-name">${item.name}</div>
+                <div class="shop-item-desc">${item.desc}</div>
+            </div>
+            <button class="${btnClass}" data-id="${item.id}">${btnText}</button>
+        `;
+        
+        if (canAfford) {
+            div.querySelector('button').addEventListener('click', () => {
+                this.buy(item.id);
+                this.render();
+            });
+        }
+        
+        listEl.appendChild(div);
+    }
+};
+
+ShopManager.init = function() {
+    this.init();
+    const modal = document.getElementById('shop-modal');
+    if (modal) {
+        const closeBtn = document.getElementById('close-shop');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+    }
+    console.log('Shop Manager initialized');
 };
 
 // Selection animation state
@@ -587,7 +1003,7 @@ function stopTimer() {
 // Reset the timer for a new level
 function resetTimer() {
     stopTimer();
-    game.timer = 60;
+    game.timer = ShopManager.getBonusTime();
 }
 
 // Feature #17: Pause functionality
@@ -1828,6 +2244,60 @@ function drawStartScreen() {
     ctx.font = '14px Arial';
     ctx.fillText('⚙️ Settings', CONFIG.canvasWidth / 2, settingsBtnY + 24);
 
+    // Achievements button (left side)
+    const achBtnWidth = 100;
+    const achBtnHeight = 36;
+    const achBtnX = 20;
+    const achBtnY = btnY + 65;
+
+    // Achievements button shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(achBtnX + 3, achBtnY + 3, achBtnWidth, achBtnHeight, 6);
+    ctx.fill();
+
+    // Achievements button background
+    const achProgress = AchievementManager.getProgress();
+    ctx.fillStyle = achProgress.unlocked > 0 ? '#f1c40f' : '#4a4a6a';
+    ctx.beginPath();
+    ctx.roundRect(achBtnX, achBtnY, achBtnWidth, achBtnHeight, 6);
+    ctx.fill();
+
+    // Achievements button text
+    ctx.fillStyle = achProgress.unlocked > 0 ? '#1a1a2e' : '#ffffff';
+    ctx.font = '12px Arial';
+    ctx.fillText(`🏆 ${achProgress.unlocked}/${achProgress.total}`, CONFIG.canvasWidth / 2 - 110, achBtnY + 24);
+
+    // Shop button (right side)
+    const shopBtnWidth = 100;
+    const shopBtnHeight = 36;
+    const shopBtnX = CONFIG.canvasWidth - shopBtnWidth - 20;
+    const shopBtnY = btnY + 65;
+
+    // Shop button shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(shopBtnX + 3, shopBtnY + 3, shopBtnWidth, shopBtnHeight, 6);
+    ctx.fill();
+
+    // Shop button background
+    ctx.fillStyle = '#9b59b6';
+    ctx.beginPath();
+    ctx.roundRect(shopBtnX, shopBtnY, shopBtnWidth, shopBtnHeight, 6);
+    ctx.fill();
+
+    // Shop button text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px Arial';
+    ctx.fillText('💎 Shop', CONFIG.canvasWidth - 70, shopBtnY + 24);
+
+    // Currency display
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(`💎 ${game.gems || 0}`, 20, 30);
+    ctx.fillText(`🪙 ${game.coins || 0}`, 20, 55);
+
     // Instructions
     ctx.fillStyle = '#666666';
     ctx.font = '14px Arial';
@@ -2565,7 +3035,7 @@ function handleCanvasClick(event) {
             game.gameState = GAME_STATE.PLAYING;
             game.score = 0;
             game.level = 1;
-            game.moves = 30;
+            game.moves = ShopManager.getBonusMoves();
             game.targetScore = 1000;
             resetTimer(); // Feature #14: Reset timer on new game
             startTimer(); // Feature #14: Start the timer
@@ -2592,6 +3062,32 @@ function handleCanvasClick(event) {
             // Open settings
             SoundManager.init();
             SettingsManager.toggle();
+            return;
+        }
+
+        // Achievements button
+        const achBtnWidth = 100;
+        const achBtnHeight = 36;
+        const achBtnX = 20;
+        const achBtnY = 445;
+
+        if (clickX >= achBtnX && clickX <= achBtnX + achBtnWidth &&
+            clickY >= achBtnY && clickY <= achBtnY + achBtnHeight) {
+            SoundManager.init();
+            AchievementManager.toggle();
+            return;
+        }
+
+        // Shop button
+        const shopBtnWidth = 100;
+        const shopBtnHeight = 36;
+        const shopBtnX = CONFIG.canvasWidth - shopBtnWidth - 20;
+        const shopBtnY = 445;
+
+        if (clickX >= shopBtnX && clickX <= shopBtnX + shopBtnWidth &&
+            clickY >= shopBtnY && clickY <= shopBtnY + shopBtnHeight) {
+            SoundManager.init();
+            ShopManager.toggle();
             return;
         }
     }
@@ -2622,7 +3118,7 @@ function handleCanvasClick(event) {
 
             // Advance to next level
             game.level++;
-            game.moves = 30;
+            game.moves = ShopManager.getBonusMoves();
             game.targetScore = 1000 + (game.level - 1) * 500;
             console.log(`\n🚀 Starting Level ${game.level}! Target: ${game.targetScore}`);
 
@@ -2647,13 +3143,13 @@ function handleCanvasClick(event) {
         if (game.gameState === GAME_STATE.WON) {
             // Advance to next level
             game.level++;
-            game.moves = 30;
+            game.moves = ShopManager.getBonusMoves();
             game.targetScore = 1000 + (game.level - 1) * 500;
             console.log(`\n🚀 Starting Level ${game.level}! Target: ${game.targetScore}`);
         } else {
             // Restart current level
             game.score = 0;
-            game.moves = 30;
+            game.moves = ShopManager.getBonusMoves();
             console.log(`\n🔄 Restarting Level ${game.level}. Target: ${game.targetScore}`);
         }
 
@@ -3016,6 +3512,10 @@ function init() {
 
     // Initialize settings modal
     SettingsManager.init();
+    
+    // Initialize achievements and shop
+    AchievementManager.init();
+    ShopManager.init();
 
     // Start the game loop
     gameLoop();

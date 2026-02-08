@@ -135,3 +135,146 @@ body {
 .btn-primary:hover {
     background: #60a5fa;
 }
+
+/* Achievements Modal */
+.achievements-content {
+    max-width: 450px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.progress-text {
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: #f1c40f;
+}
+
+.achievements-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.achievement-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid #374151;
+}
+
+.achievement-item.locked {
+    opacity: 0.5;
+}
+
+.achievement-item.unlocked {
+    border-color: #f1c40f;
+    background: rgba(241, 196, 15, 0.1);
+}
+
+.achievement-icon {
+    font-size: 28px;
+}
+
+.achievement-info {
+    flex: 1;
+    text-align: left;
+}
+
+.achievement-name {
+    font-size: 14px;
+    font-weight: bold;
+    color: #f3f4f6;
+}
+
+.achievement-desc {
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.achievement-reward {
+    font-size: 11px;
+    color: #f1c40f;
+    margin-top: 4px;
+}
+
+/* Shop Modal */
+.shop-content {
+    max-width: 500px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.shop-currency {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 20px;
+    font-size: 16px;
+    color: #f3f4f6;
+}
+
+.shop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.shop-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid #374151;
+}
+
+.shop-item-icon {
+    font-size: 24px;
+}
+
+.shop-item-info {
+    flex: 1;
+    text-align: left;
+}
+
+.shop-item-name {
+    font-size: 14px;
+    font-weight: bold;
+    color: #f3f4f6;
+}
+
+.shop-item-desc {
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.shop-item-buy {
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.shop-item-buy:hover {
+    background: #34d399;
+}
+
+.shop-item-buy:disabled {
+    background: #4b5563;
+    cursor: not-allowed;
+}
