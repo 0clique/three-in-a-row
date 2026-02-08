@@ -78,7 +78,12 @@ const game = {
     // Animation system
     animations: [],
     animatingGems: new Set(),
-    swapInProgress: null
+    swapInProgress: null,
+    // Feature #19: Combo system
+    comboCount: 0,           // Current combo multiplier (1 = no combo)
+    comboTimer: null,        // Timer to reset combo
+    maxCombo: 0,             // Highest combo achieved this level
+    comboMessages: []        // Active combo popup messages
 };
 
 // Animation configuration
@@ -265,6 +270,143 @@ const selectionAnimation = {
     startTime: 0,
     pulsePhase: 0
 };
+
+/**
+ * Feature #19: Combo System
+ * Tracks cascading matches and applies score multipliers
+ */
+
+// Combo system configuration
+const COMBO_CONFIG = {
+    comboTimeout: 2000,      // ms before combo resets
+    baseMultiplier: 1,       // Base score multiplier
+    maxMultiplier: 10,       // Maximum combo multiplier
+    showPopup: true          // Show combo popup messages
+};
+
+// Reset combo count (called when player makes a new move)
+function resetCombo() {
+    if (game.comboCount > 0) {
+        console.log(`Combo ended at x${game.comboCount}`);
+    }
+    game.comboCount = 0;
+    if (game.comboTimer) {
+        clearTimeout(game.comboTimer);
+        game.comboTimer = null;
+    }
+}
+
+// Increment combo (called on cascade match)
+function incrementCombo() {
+    if (game.comboCount === 0) {
+        // First cascade - start a new combo
+        game.comboCount = 1;
+    } else {
+        game.comboCount++;
+    }
+    
+    // Cap at max multiplier
+    if (game.comboCount > COMBO_CONFIG.maxMultiplier) {
+        game.comboCount = COMBO_CONFIG.maxMultiplier;
+    }
+    
+    // Track max combo achieved
+    if (game.comboCount > game.maxCombo) {
+        game.maxCombo = game.comboCount;
+    }
+    
+    console.log(`🔥 COMBO x${game.comboCount}!`);
+    
+    // Set/reset combo timeout
+    if (game.comboTimer) {
+        clearTimeout(game.comboTimer);
+    }
+    game.comboTimer = setTimeout(() => {
+        console.log(`Combo expired at x${game.comboCount}`);
+        game.comboCount = 0;
+    }, COMBO_CONFIG.comboTimeout);
+    
+    // Add popup message
+    if (game.comboCount > 1 && COMBO_CONFIG.showPopup) {
+        addComboMessage(game.comboCount);
+    }
+    
+    return game.comboCount;
+}
+
+// Get current combo multiplier
+function getComboMultiplier() {
+    return 1 + (game.comboCount - 1) * 0.5; // x1, x1.5, x2, x2.5, ...
+}
+
+// Calculate score with combo multiplier
+function calculateScore(gemsCleared, basePoints = 10) {
+    const baseScore = gemsCleared * basePoints;
+    const multiplier = getComboMultiplier();
+    return Math.floor(baseScore * multiplier);
+}
+
+// Add combo popup message
+function addComboMessage(combo) {
+    const messages = ['COMBO!', 'NICE!', 'AWESOME!', 'AMAZING!', 'INCREDIBLE!', 'UNBELIEVABLE!'];
+    const msgIndex = Math.min(combo - 2, messages.length - 1);
+    
+    game.comboMessages.push({
+        text: combo > 1 ? `${messages[msgIndex]} x${combo}` : messages[0],
+        x: CONFIG.canvasWidth / 2,
+        y: CONFIG.gridOffsetY + CONFIG.gridRows * CONFIG.gemSize / 2,
+        alpha: 1,
+        scale: 0.5,
+        velocityY: -2,
+        startTime: performance.now()
+    });
+}
+
+// Update and draw combo messages
+function updateComboMessages(ctx) {
+    const currentTime = performance.now();
+    const messagesToRemove = [];
+    
+    for (let i = 0; i < game.comboMessages.length; i++) {
+        const msg = game.comboMessages[i];
+        const elapsed = currentTime - msg.startTime;
+        
+        // Fade out and float up
+        msg.alpha = Math.max(0, 1 - elapsed / 1500);
+        msg.scale = Math.min(1.5, msg.scale + 0.02);
+        msg.y += msg.velocityY;
+        
+        // Draw message
+        if (msg.alpha > 0) {
+            ctx.save();
+            ctx.globalAlpha = msg.alpha;
+            ctx.translate(msg.x, msg.y);
+            ctx.scale(msg.scale, msg.scale);
+            
+            // Glow effect
+            ctx.shadowColor = '#f1c40f';
+            ctx.shadowBlur = 20;
+            
+            // Text
+            ctx.font = 'bold 32px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#f1c40f';
+            ctx.fillText(msg.text, 0, 0);
+            
+            ctx.restore();
+        }
+        
+        // Mark for removal if faded out
+        if (msg.alpha <= 0) {
+            messagesToRemove.push(i);
+        }
+    }
+    
+    // Remove expired messages
+    for (let i = messagesToRemove.length - 1; i >= 0; i--) {
+        game.comboMessages.splice(messagesToRemove[i], 1);
+    }
+}
 
 /**
  * Timer System - Feature #14: HUD with level, score, timer
@@ -1492,6 +1634,7 @@ function drawStartScreen() {
 
 /**
  * Feature #14: Draw game HUD with level, score, moves, timer, and target
+ * Feature #19: Updated to show combo information
  */
 function drawHUD() {
     const ctx = game.ctx;
@@ -1527,6 +1670,28 @@ function drawHUD() {
     ctx.textAlign = 'right';
     ctx.fillStyle = '#f1c40f';
     ctx.fillText(`Target: ${game.targetScore}`, CONFIG.canvasWidth - 20, 32);
+
+    // Feature #19: Combo display
+    if (game.comboCount > 1) {
+        const comboMultiplier = getComboMultiplier();
+        
+        // Combo background pill
+        ctx.fillStyle = 'rgba(241, 196, 15, 0.3)';
+        ctx.beginPath();
+        ctx.roundRect(CONFIG.canvasWidth / 2 - 50, 38, 100, 24, 12);
+        ctx.fill();
+        
+        // Combo border
+        ctx.strokeStyle = '#f1c40f';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Combo text
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#f1c40f';
+        ctx.fillText(`🔥 x${comboMultiplier.toFixed(1)}`, CONFIG.canvasWidth / 2, 55);
+    }
 }
 
 /**
@@ -2088,7 +2253,7 @@ function clearCanvas() {
 }
 
 /**
- * Main game loop - now with animation processing
+ * Main game loop - now with animation processing and combo messages
  */
 function gameLoop() {
     clearCanvas();
@@ -2106,6 +2271,12 @@ function gameLoop() {
         drawHUD();
         drawGrid();
         drawSelection();
+        
+        // Feature #19: Draw combo popup messages
+        if (game.comboMessages.length > 0) {
+            updateComboMessages(game.ctx);
+        }
+        
         drawOverlays();
 
         // Update selection animation state
@@ -2353,6 +2524,7 @@ function handleCanvasClick(event) {
 
 /**
  * Swap two gems with smooth animation - Feature #8
+ * Feature #19: Updated with combo system
  */
 async function swapGems(gem1, gem2) {
     // Prevent interaction during animation
@@ -2362,6 +2534,9 @@ async function swapGems(gem1, gem2) {
     }
 
     game.isAnimating = true;
+
+    // Feature #19: Reset combo at start of new move
+    resetCombo();
 
     // Store original positions for grid update after animation
     const tempType = game.grid[gem1.row][gem1.col].type;
@@ -2420,25 +2595,36 @@ async function swapGems(gem1, gem2) {
         console.log(`\nMoves remaining: ${game.moves}`);
 
         // Check for cascade matches WITH animations
+        let cascadeCount = 0;
         const totalCleared = await game.gridManager.animateCascade();
         if (totalCleared > 0) {
             // Play cascade sound for chain reactions
             SoundManager.cascade();
             console.log(`Animated cascade complete! Total gems cleared: ${totalCleared}`);
 
-            // Bonus: Add 1 second per cascade combo
-            game.timer += 1;
-            console.log(`⏱️ Cascade bonus! +1s, Timer: ${game.timer}s`);
+            // Feature #19: Increment combo on cascade
+            cascadeCount = incrementCombo();
+
+            // Bonus: Add more time for combos
+            game.timer += cascadeCount > 1 ? cascadeCount : 1;
+            console.log(`⏱️ Cascade bonus! +${cascadeCount > 1 ? cascadeCount : 1}s, Timer: ${game.timer}s`);
         }
 
         console.log('--- Feature #9: Complete ---\n');
 
-        // Feature #7: Add score based on matches
-        const scoreGained = uniqueGems.length * 10;
+        // Feature #19: Add score based on matches WITH combo multiplier
+        const baseScore = uniqueGems.length * 10;
+        const comboMultiplier = getComboMultiplier();
+        const scoreGained = Math.floor(baseScore * comboMultiplier);
         game.score += scoreGained;
-        console.log(`🎯 Score gained: ${scoreGained}, Total score: ${game.score}`);
+        
+        if (game.comboCount > 1) {
+            console.log(`🎯 Score gained: ${baseScore} × ${comboMultiplier.toFixed(1)} = ${scoreGained}, Total: ${game.score}`);
+        } else {
+            console.log(`🎯 Score gained: ${scoreGained}, Total score: ${game.score}`);
+        }
 
-        // Add 1 second to timer for successful match
+        // Add 1 second to timer for successful match (combo adds more)
         game.timer += 1;
         console.log(`⏱️ +1 second bonus! Timer: ${game.timer}s`);
 
@@ -2512,6 +2698,8 @@ function init() {
     console.log('Level complete screen enabled - Feature #15 implemented');
     console.log('Game over screen enabled - Feature #16 implemented');
     console.log('Pause functionality enabled - Feature #17 implemented');
+    console.log('Settings modal enabled - Feature #18 implemented');
+    console.log('Combo system enabled - Feature #19 implemented');
     console.log('\n🎮 Click "PLAY" to start the game! 60 seconds on the clock!');
     console.log('Press ESC or P to pause the game');
     
