@@ -143,9 +143,8 @@ const SoundManager = {
             
             osc.start();
             osc.stop(this.audioContext.currentTime + duration);
-        } catch (e Silently fail if audio fails
-       ) {
-            // }
+        } catch (e) {
+            // Silently fail if audio fails
     },
     
     // Sound effects
