@@ -58,7 +58,15 @@ const ANIMATION = {
     SWAP_EASE: 'ease-in-out',
     CLEAR_DURATION: 250,         // ms for match clear animation
     CLEAR_EASE: 'ease-in',
-    FALL_DURATION: 150           // ms per cell for falling gems
+    FALL_DURATION: 150,          // ms per cell for falling gems
+    SELECTION_PULSE_DURATION: 600 // ms for selection pulse animation
+};
+
+// Selection animation state
+const selectionAnimation = {
+    active: false,
+    startTime: 0,
+    pulsePhase: 0
 };
 
 /**
@@ -939,6 +947,7 @@ function drawBucket(x, y, width, height) {
 function drawGem(gem) {
     const ctx = game.ctx;
     const colors = GEM_COLORS;
+    const isSelected = game.selectedGem === gem;
 
     const x = gem.x + CONFIG.gridOffsetX + CONFIG.bucketPadding + CONFIG.gemPadding;
     const y = gem.y + CONFIG.gridOffsetY + CONFIG.bucketPadding + CONFIG.gemPadding;
@@ -946,8 +955,25 @@ function drawGem(gem) {
 
     ctx.save();
     ctx.globalAlpha = gem.alpha;
+
+    // Apply selection pulse animation
+    let scaleOffset = 0;
+    if (isSelected && selectionAnimation.active) {
+        const elapsed = performance.now() - selectionAnimation.startTime;
+        const pulse = (Math.sin(elapsed / ANIMATION.SELECTION_PULSE_DURATION * Math.PI * 2) + 1) / 2;
+        scaleOffset = pulse * 0.05; // Subtle scale pulse
+    }
+
     ctx.translate(x + size / 2, y + size / 2);
-    ctx.scale(gem.scale, gem.scale);
+    ctx.scale(gem.scale + scaleOffset, gem.scale + scaleOffset);
+
+    // Draw selection glow behind gem
+    if (isSelected) {
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 15 + (scaleOffset * 200);
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+    }
 
     // Draw gem shape (rounded rectangle)
     ctx.fillStyle = colors[gem.type];
@@ -955,9 +981,12 @@ function drawGem(gem) {
     ctx.roundRect(-size / 2, -size / 2, size, size, 8);
     ctx.fill();
 
+    // Reset shadow for other elements
+    ctx.shadowBlur = 0;
+
     // Draw gem border
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = isSelected ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.3)';
+    ctx.lineWidth = isSelected ? 2 : 1;
     ctx.stroke();
 
     // Draw gem highlight (top-left)
@@ -1003,26 +1032,82 @@ function drawGrid() {
 /**
  * Draw selection highlight on selected gem
  */
+/**
+ * Draw enhanced selection highlight with animated pulse rings
+ */
 function drawSelection() {
     if (game.selectedGem) {
         const ctx = game.ctx;
         const gem = game.selectedGem;
 
-        const x = gem.x + CONFIG.gridOffsetX - 4;
-        const y = gem.y + CONFIG.gridOffsetY - 4;
-        const size = CONFIG.gemSize + 8;
+        const centerX = gem.x + CONFIG.gridOffsetX + CONFIG.gemSize / 2;
+        const centerY = gem.y + CONFIG.gridOffsetY + CONFIG.gemSize / 2;
+        const baseSize = CONFIG.gemSize / 2 + 4;
 
-        // Selection glow
-        ctx.shadowColor = '#ffffff';
-        ctx.shadowBlur = 10;
+        // Calculate pulse effect
+        const elapsed = selectionAnimation.active ? performance.now() - selectionAnimation.startTime : 0;
+        const pulse = (Math.sin(elapsed / ANIMATION.SELECTION_PULSE_DURATION * Math.PI * 2) + 1) / 2;
 
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
+        // Draw multiple animated rings for dynamic effect
+        for (let i = 3; i >= 0; i--) {
+            const ringScale = 1 + (i * 0.15) + (pulse * 0.1);
+            const ringAlpha = 0.3 - (i * 0.07);
+
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.scale(ringScale, ringScale);
+
+            ctx.strokeStyle = `rgba(255, 255, 255, ${ringAlpha})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(-baseSize, -baseSize, baseSize * 2, baseSize * 2, 8);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // Draw corner accents for visual emphasis
+        const accentSize = 8;
+        const offset = baseSize - 2;
+
+        ctx.fillStyle = '#ffffff';
+        const corners = [
+            [-offset, -offset], [offset, -offset],
+            [-offset, offset], [offset, offset]
+        ];
+
+        for (const [cx, cy] of corners) {
+            ctx.beginPath();
+            ctx.arc(centerX + cx, centerY + cy, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Inner highlight ring
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.6 + pulse * 0.4})`;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.roundRect(x, y, size, size, 10);
+        ctx.roundRect(
+            gem.x + CONFIG.gridOffsetX - 2,
+            gem.y + CONFIG.gridOffsetY - 2,
+            CONFIG.gemSize + 4,
+            CONFIG.gemSize + 4,
+            8
+        );
         ctx.stroke();
+    }
+}
 
-        ctx.shadowBlur = 0;
+/**
+ * Update selection animation state
+ */
+function updateSelectionAnimation() {
+    if (game.selectedGem) {
+        if (!selectionAnimation.active) {
+            selectionAnimation.active = true;
+            selectionAnimation.startTime = performance.now();
+        }
+    } else {
+        selectionAnimation.active = false;
     }
 }
 
@@ -1190,6 +1275,9 @@ function gameLoop() {
     drawSelection();
     drawOverlays();
 
+    // Update selection animation state
+    updateSelectionAnimation();
+
     // Process any active animations
     processAnimations();
 
@@ -1259,6 +1347,8 @@ function handleCanvasClick(event) {
     if (!game.selectedGem) {
         // First click - select the gem
         game.selectedGem = clickedGem;
+        // Reset selection animation for fresh pulse
+        selectionAnimation.startTime = performance.now();
     } else {
         // Second click - try to swap
         const selectedGem = game.selectedGem;
@@ -1280,6 +1370,8 @@ function handleCanvasClick(event) {
         } else {
             // Not adjacent - select the new gem instead
             game.selectedGem = clickedGem;
+            // Reset selection animation for fresh pulse
+            selectionAnimation.startTime = performance.now();
         }
     }
 }
