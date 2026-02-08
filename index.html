@@ -9,6 +9,27 @@
 <body>
     <div id="game-container">
         <canvas id="game-canvas"></canvas>
+        
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>⚙️ Settings</h2>
+                <div class="setting-row">
+                    <label for="music-volume">Music</label>
+                    <input type="range" id="music-volume" min="0" max="100" value="50">
+                    <span id="music-value">50%</span>
+                </div>
+                <div class="setting-row">
+                    <label for="sfx-volume">Sound Effects</label>
+                    <input type="range" id="sfx-volume" min="0" max="100" value="50">
+                    <span id="sfx-value">50%</span>
+                </div>
+                <div class="setting-row">
+                    <button id="reset-progress">Reset Progress</button>
+                </div>
+                <button id="close-settings" class="btn-primary">Done</button>
+            </div>
+        </div>
     </div>
     <script src="game.js"></script>
 </body>

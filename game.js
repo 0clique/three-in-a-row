@@ -96,6 +96,8 @@ const SoundManager = {
     audioContext: null,
     enabled: true,
     masterVolume: 0.3,
+    musicVolume: 0.5,
+    sfxVolume: 0.5,
     
     init() {
         // Initialize Web Audio API on first user interaction
@@ -124,9 +126,9 @@ const SoundManager = {
             osc.type = type;
             osc.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
             
-            // Apply master volume
+            // Apply master and SFX volume
             const vol = volume !== null ? volume : this.masterVolume;
-            gainNode.gain.setValueAtTime(vol, this.audioContext.currentTime);
+            gainNode.gain.setValueAtTime(vol * this.sfxVolume, this.audioContext.currentTime);
             
             // Sound envelope - fade out
             gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
@@ -136,9 +138,9 @@ const SoundManager = {
             
             osc.start();
             osc.stop(this.audioContext.currentTime + duration);
-        } catch (e) {
-            // Silently fail if audio fails
-        }
+        } catch (e Silently fail if audio fails
+       ) {
+            // }
     },
     
     // Sound effects
@@ -192,6 +194,68 @@ const SoundManager = {
         this.enabled = !this.enabled;
         console.log('Sound effects:', this.enabled ? 'enabled' : 'disabled');
         return this.enabled;
+    }
+};
+
+// Feature #18: Settings Modal
+const SettingsManager = {
+    isOpen: false,
+    
+    toggle() {
+        this.isOpen = !this.isOpen;
+        const modal = document.getElementById('settings-modal');
+        if (modal) {
+            modal.classList.toggle('hidden', !this.isOpen);
+        }
+        console.log('Settings modal:', this.isOpen ? 'opened' : 'closed');
+    },
+    
+    init() {
+        const modal = document.getElementById('settings-modal');
+        if (!modal) return;
+        
+        // Close button
+        const closeBtn = document.getElementById('close-settings');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+        
+        // Music volume slider
+        const musicSlider = document.getElementById('music-volume');
+        const musicValue = document.getElementById('music-value');
+        if (musicSlider && musicValue) {
+            musicSlider.addEventListener('input', (e) => {
+                const val = e.target.value;
+                SoundManager.musicVolume = val / 100;
+                musicValue.textContent = val + '%';
+            });
+        }
+        
+        // SFX volume slider
+        const sfxSlider = document.getElementById('sfx-volume');
+        const sfxValue = document.getElementById('sfx-value');
+        if (sfxSlider && sfxValue) {
+            sfxSlider.addEventListener('input', (e) => {
+                const val = e.target.value;
+                SoundManager.sfxVolume = val / 100;
+                sfxValue.textContent = val + '%';
+            });
+        }
+        
+        // Reset progress button
+        const resetBtn = document.getElementById('reset-progress');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                if (confirm('Reset all progress? This will clear your high scores.')) {
+                    localStorage.removeItem('threeInARowHighScore');
+                    localStorage.removeItem('threeInARowTotalScore');
+                    console.log('Progress reset');
+                    alert('Progress has been reset!');
+                }
+            });
+        }
+        
+        console.log('Settings Manager initialized');
     }
 };
 
@@ -1391,6 +1455,29 @@ function drawStartScreen() {
     ctx.font = 'bold 24px Arial';
     ctx.fillText('PLAY', CONFIG.canvasWidth / 2, btnY + 33);
 
+    // Settings button (smaller, below play button)
+    const settingsBtnWidth = 120;
+    const settingsBtnHeight = 36;
+    const settingsBtnX = (CONFIG.canvasWidth - settingsBtnWidth) / 2;
+    const settingsBtnY = btnY + 65;
+
+    // Settings button shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(settingsBtnX + 3, settingsBtnY + 3, settingsBtnWidth, settingsBtnHeight, 6);
+    ctx.fill();
+
+    // Settings button background
+    ctx.fillStyle = '#4a4a6a';
+    ctx.beginPath();
+    ctx.roundRect(settingsBtnX, settingsBtnY, settingsBtnWidth, settingsBtnHeight, 6);
+    ctx.fill();
+
+    // Settings button text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px Arial';
+    ctx.fillText('⚙️ Settings', CONFIG.canvasWidth / 2, settingsBtnY + 24);
+
     // Instructions
     ctx.fillStyle = '#666666';
     ctx.font = '14px Arial';
@@ -2112,9 +2199,22 @@ function handleCanvasClick(event) {
             }
 
             console.log('\n🎮 Starting game! Level 1 - Target: 1000 points - Time: 60 seconds');
+            return;
         }
-        return;
-    }
+
+        // Settings button
+        const settingsBtnWidth = 120;
+        const settingsBtnHeight = 36;
+        const settingsBtnX = (CONFIG.canvasWidth - settingsBtnWidth) / 2;
+        const settingsBtnY = 445;
+
+        if (clickX >= settingsBtnX && clickX <= settingsBtnX + settingsBtnWidth &&
+            clickY >= settingsBtnY && clickY <= settingsBtnY + settingsBtnHeight) {
+            // Open settings
+            SoundManager.init();
+            SettingsManager.toggle();
+            return;
+        }
 
     // Feature #15: Handle level complete screen clicks
     if (game.gameState === GAME_STATE.WON) {
@@ -2429,6 +2529,9 @@ function init() {
             SoundManager.toggle();
         }
     });
+
+    // Initialize settings modal
+    SettingsManager.init();
 
     // Start the game loop
     gameLoop();

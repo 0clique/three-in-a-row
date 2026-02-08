@@ -26,3 +26,112 @@ body {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     cursor: pointer;
 }
+
+/* Modal Styles */
+.modal {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: linear-gradient(145deg, #1f2937, #111827);
+    padding: 30px;
+    border-radius: 16px;
+    border: 1px solid #374151;
+    min-width: 300px;
+    text-align: center;
+    color: #f3f4f6;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-content h2 {
+    margin-bottom: 24px;
+    font-size: 24px;
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    gap: 12px;
+}
+
+.setting-row label {
+    font-size: 14px;
+    min-width: 100px;
+    text-align: left;
+}
+
+.setting-row input[type="range"] {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: #374151;
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.setting-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #3b82f6;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.setting-row input[type="range"]::-webkit-slider-thumb:hover {
+    background: #60a5fa;
+}
+
+.setting-row span {
+    font-size: 12px;
+    min-width: 40px;
+    text-align: right;
+    color: #9ca3af;
+}
+
+.setting-row button {
+    background: #dc2626;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.setting-row button:hover {
+    background: #ef4444;
+}
+
+.btn-primary {
+    margin-top: 20px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 12px 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.2s;
+}
+
+.btn-primary:hover {
+    background: #60a5fa;
+}
