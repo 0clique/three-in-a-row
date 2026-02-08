@@ -70,6 +70,9 @@ const game = {
     gameState: GAME_STATE.MENU,
     gridInitialized: false,
     targetScore: 1000,
+    // Timer system - Feature #14
+    timer: 60,           // Seconds remaining
+    timerInterval: null,  // Timer interval ID
     // Animation system
     animations: [],
     animatingGems: new Set(),
@@ -196,6 +199,57 @@ const selectionAnimation = {
     startTime: 0,
     pulsePhase: 0
 };
+
+/**
+ * Timer System - Feature #14: HUD with level, score, timer
+ */
+
+// Start the countdown timer
+function startTimer() {
+    stopTimer(); // Clear any existing timer
+    game.timer = 60; // Reset to 60 seconds
+    
+    game.timerInterval = setInterval(() => {
+        if (game.gameState === GAME_STATE.PLAYING && !game.isAnimating) {
+            game.timer--;
+            
+            // Play warning sound when time is low
+            if (game.timer === 10) {
+                SoundManager.play(440, 0.3, 'square', 0.1);
+            }
+            
+            // Check if time has run out
+            if (game.timer <= 0) {
+                stopTimer();
+                game.timer = 0;
+                game.gameState = GAME_STATE.LOST;
+                SoundManager.gameOver();
+                console.log(`💀 TIME'S UP! Game Over! Score: ${game.score}/${game.targetScore}`);
+            }
+        }
+    }, 1000);
+}
+
+// Stop the countdown timer
+function stopTimer() {
+    if (game.timerInterval) {
+        clearInterval(game.timerInterval);
+        game.timerInterval = null;
+    }
+}
+
+// Reset the timer for a new level
+function resetTimer() {
+    stopTimer();
+    game.timer = 60;
+}
+
+// Format time as MM:SS
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
 
 /**
  * Animation System - Feature #8: Smooth Swap Animations
@@ -1324,7 +1378,7 @@ function drawStartScreen() {
 }
 
 /**
- * Draw game HUD
+ * Feature #14: Draw game HUD with level, score, moves, timer, and target
  */
 function drawHUD() {
     const ctx = game.ctx;
@@ -1333,44 +1387,61 @@ function drawHUD() {
     ctx.fillStyle = CONFIG.bucketColor;
     ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.gridOffsetY - 10);
 
-    // Level
+    // Level - left side
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 18px Arial';
     ctx.textAlign = 'left';
-    ctx.fillText(`Level: ${game.level}`, 30, 35);
+    ctx.fillText(`Level: ${game.level}`, 20, 32);
 
-    // Score
+    // Score - center left
     ctx.textAlign = 'center';
-    ctx.fillText(`Score: ${game.score}`, CONFIG.canvasWidth / 2, 35);
+    ctx.font = '16px Arial';
+    ctx.fillText(`Score: ${game.score}`, 130, 32);
 
-    // Moves
+    // Timer - center with prominent display
+    ctx.font = 'bold 20px Arial';
+    const timerColor = game.timer <= 10 ? '#ff6b6b' : '#ffffff';
+    ctx.fillStyle = timerColor;
+    ctx.fillText(`Time: ${formatTime(game.timer)}`, CONFIG.canvasWidth / 2, 32);
+
+    // Moves - center right
+    ctx.textAlign = 'center';
+    ctx.font = '16px Arial';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`Moves: ${game.moves}`, CONFIG.canvasWidth - 130, 32);
+
+    // Target score - right side
     ctx.textAlign = 'right';
-    ctx.fillText(`Moves: ${game.moves}`, CONFIG.canvasWidth - 30, 35);
-
-    // Target score display
-    ctx.textAlign = 'center';
-    ctx.font = '14px Arial';
-    ctx.fillStyle = '#aaaaaa';
-    ctx.fillText(`Target: ${game.targetScore}`, CONFIG.canvasWidth / 2, 55);
+    ctx.fillStyle = '#f1c40f';
+    ctx.fillText(`Target: ${game.targetScore}`, CONFIG.canvasWidth - 20, 32);
 }
 
 /**
- * Check win/lose conditions
+ * Check win/lose conditions - Feature #7 & Feature #14 (timer)
  */
 function checkGameState() {
     // Check win condition
     if (game.score >= game.targetScore) {
+        stopTimer(); // Stop timer on win
         game.gameState = GAME_STATE.WON;
         SoundManager.levelComplete();
         console.log(`🎉 LEVEL COMPLETE! You reached ${game.score} points!`);
         return true;
     }
 
-    // Check lose condition
+    // Check lose condition - no moves
     if (game.moves <= 0 && game.score < game.targetScore) {
         game.gameState = GAME_STATE.LOST;
         SoundManager.gameOver();
-        console.log(`💀 GAME OVER! Score: ${game.score}/${game.targetScore}`);
+        console.log(`💀 GAME OVER! Out of moves! Score: ${game.score}/${game.targetScore}`);
+        return true;
+    }
+
+    // Check lose condition - time ran out
+    if (game.timer <= 0 && game.score < game.targetScore) {
+        game.gameState = GAME_STATE.LOST;
+        SoundManager.gameOver();
+        console.log(`💀 GAME OVER! Time's up! Score: ${game.score}/${game.targetScore}`);
         return true;
     }
 
@@ -1536,6 +1607,8 @@ function handleCanvasClick(event) {
             game.level = 1;
             game.moves = 30;
             game.targetScore = 1000;
+            resetTimer(); // Feature #14: Reset timer on new game
+            startTimer(); // Feature #14: Start the timer
 
             // Initialize grid if not already done
             if (!game.gridInitialized) {
@@ -1544,13 +1617,16 @@ function handleCanvasClick(event) {
                 game.gridInitialized = true;
             }
 
-            console.log('\n🎮 Starting game! Level 1 - Target: 1000 points');
+            console.log('\n🎮 Starting game! Level 1 - Target: 1000 points - Time: 60 seconds');
         }
         return;
     }
 
     // Feature #7: Handle game over/restart clicks
     if (game.gameState !== GAME_STATE.PLAYING) {
+        // Stop any running timer
+        stopTimer();
+        
         if (game.gameState === GAME_STATE.WON) {
             // Advance to next level
             game.level++;
@@ -1566,6 +1642,8 @@ function handleCanvasClick(event) {
 
         // Reset game state
         game.gameState = GAME_STATE.PLAYING;
+        resetTimer(); // Feature #14: Reset timer
+        startTimer(); // Feature #14: Start timer for new level
 
         // Reinitialize the grid
         game.gridManager.initialize();
@@ -1778,7 +1856,8 @@ function init() {
     console.log('Gem falling animation enabled - Feature #10 implemented');
     console.log('Sound effects enabled - Feature #12 implemented');
     console.log('Start screen enabled - Feature #13 implemented');
-    console.log('\n🎮 Click "PLAY" to start the game!');
+    console.log('HUD with timer enabled - Feature #14 implemented');
+    console.log('\n🎮 Click "PLAY" to start the game! 60 seconds on the clock!');
     
     // Keyboard shortcut for toggling sound (press 'M')
     document.addEventListener('keydown', (e) => {
