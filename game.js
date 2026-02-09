@@ -1406,73 +1406,6 @@ class GridManager {
         return null;
     }
 
-/**
- * Start the game (called from PLAY button)
- */
-function startGame() {
-    // Hide overlay button
-    const overlayBtn = document.getElementById('start-button-overlay');
-    if (overlayBtn) {
-        overlayBtn.style.display = 'none';
-    }
-    
-    game.gameState = GAME_STATE.PLAYING;
-    game.score = 0;
-    game.level = 1;
-    game.moves = ShopManager.getBonusMoves();
-    game.targetScore = 1000;
-    resetTimer();
-    startTimer();
-
-    // Initialize grid if not already done
-    if (!game.gridInitialized) {
-        game.gridManager.initialize();
-        game.grid = game.gridManager.getGrid();
-        game.gridInitialized = true;
-    }
-
-    game.isAnimating = false;
-    game.selectedGem = null;
-
-    console.log('\n🎮 Starting game! Level 1 - Target: 1000 points');
-}
-
-/**
- * Return to menu
- */
-function returnToMenu() {
-    game.gameState = GAME_STATE.MENU;
-    game.isAnimating = false;
-    game.selectedGem = null;
-    
-    // Show overlay button again
-    const overlayBtn = document.getElementById('start-button-overlay');
-    if (overlayBtn) {
-        overlayBtn.style.display = 'block';
-    }
-    
-    stopTimer();
-}
-
-/**
- * Swap two gems with smooth animation - Feature #8
- * Feature #19: Updated with combo system
- * Feature #20: Updated with power-up system
- */
-async function swapGems(gem1, gem2) {
-    const tempType = gem1.type;
-        const tempX = gem1.x;
-        const tempY = gem1.y;
-
-        gem1.type = gem2.type;
-        gem1.x = gem2.x;
-        gem1.y = gem2.y;
-
-        gem2.type = tempType;
-        gem2.x = tempX;
-        gem2.y = tempY;
-    }
-
     /**
      * Get the grid data (for external use)
      */
@@ -1935,6 +1868,54 @@ async function swapGems(gem1, gem2) {
 
         return totalCleared;
     }
+}
+
+/**
+ * Start the game (called from PLAY button)
+ */
+function startGame() {
+    // Hide overlay button
+    const overlayBtn = document.getElementById('start-button-overlay');
+    if (overlayBtn) {
+        overlayBtn.style.display = 'none';
+    }
+    
+    game.gameState = GAME_STATE.PLAYING;
+    game.score = 0;
+    game.level = 1;
+    game.moves = ShopManager.getBonusMoves();
+    game.targetScore = 1000;
+    resetTimer();
+    startTimer();
+
+    // Initialize grid if not already done
+    if (!game.gridInitialized) {
+        game.gridManager.initialize();
+        game.grid = game.gridManager.getGrid();
+        game.gridInitialized = true;
+    }
+
+    game.isAnimating = false;
+    game.selectedGem = null;
+
+    console.log('\n🎮 Starting game! Level 1 - Target: 1000 points');
+}
+
+/**
+ * Return to menu
+ */
+function returnToMenu() {
+    game.gameState = GAME_STATE.MENU;
+    game.isAnimating = false;
+    game.selectedGem = null;
+    
+    // Show overlay button again
+    const overlayBtn = document.getElementById('start-button-overlay');
+    if (overlayBtn) {
+        overlayBtn.style.display = 'block';
+    }
+    
+    stopTimer();
 }
 
 // Global function for overlay play button
@@ -3568,3 +3549,4 @@ function init() {
 
 // Initialize the game when the page loads
 window.addEventListener('load', init);
+}
