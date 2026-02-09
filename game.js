@@ -1406,12 +1406,6 @@ class GridManager {
         return null;
     }
 
-// Global function for overlay play button
-window.handleOverlayPlayClick = function() {
-    console.log('handleOverlayPlayClick() called');
-    startGame();
-};
-
 /**
  * Start the game (called from PLAY button)
  */
@@ -1942,6 +1936,11 @@ async function swapGems(gem1, gem2) {
         return totalCleared;
     }
 }
+
+// Global function for overlay play button
+window.handleOverlayPlayClick = function() {
+    startGame();
+};
 
 /**
  * Draw a bucket (container for gems)
