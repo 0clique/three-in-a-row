@@ -406,6 +406,864 @@ function showNotification(message, duration = 3000) {
     }, duration);
 }
 
+// Feature #24: Leaderboards system
+const LEADERBOARD_PERIODS = {
+    DAILY: { id: 'daily', name: 'Today', resetHours: 24 },
+    WEEKLY: { id: 'weekly', name: 'This Week', resetHours: 168 },
+    ALL_TIME: { id: 'all', name: 'All Time', resetHours: 0 }
+};
+
+const LEADERBOARD_TYPES = {
+    SCORE: { id: 'score', name: 'High Score', icon: '🏆' },
+    LEVEL: { id: 'level', name: 'Highest Level', icon: '📈' },
+    COMBO: { id: 'combo', name: 'Best Combo', icon: '🔥' }
+};
+
+const LeaderboardManager = {
+    entries: [],
+    playerRank: null,
+    
+    init() {
+        // Load from localStorage or initialize
+        const saved = localStorage.getItem('threeInRow_leaderboard');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.entries = data.entries || [];
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_leaderboard', JSON.stringify({
+            entries: this.entries,
+            lastUpdated: Date.now()
+        }));
+    },
+    
+    getScore() {
+        return {
+            score: game.score,
+            level: game.level,
+            combo: AchievementManager.stats.maxCombo,
+            playerId: 'player_' + (localStorage.getItem('threeInRow_playerId') || this.generateId()),
+            timestamp: Date.now()
+        };
+    },
+    
+    generateId() {
+        const id = 'player_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('threeInRow_playerId', id);
+        return id;
+    },
+    
+    submitScore() {
+        const scoreData = this.getScore();
+        const existing = this.entries.findIndex(e => e.playerId === scoreData.playerId && e.period === 'all_time');
+        
+        if (existing >= 0) {
+            // Update if better
+            if (scoreData.score > this.entries[existing].score) {
+                this.entries[existing] = { ...scoreData, period: 'all_time' };
+            }
+        } else {
+            this.entries.push({ ...scoreData, period: 'all_time' });
+        }
+        
+        this.save();
+        return this.getRank(scoreData.playerId);
+    },
+    
+    getRank(playerId) {
+        const sorted = [...this.entries].sort((a, b) => b.score - a.score);
+        const rank = sorted.findIndex(e => e.playerId === playerId) + 1;
+        return rank > 0 ? rank : null;
+    },
+    
+    getTop(period = 'all_time', limit = 10) {
+        return this.entries
+            .filter(e => e.period === period)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit);
+    },
+    
+    getPlayerEntry(playerId) {
+        return this.entries.find(e => e.playerId === playerId);
+    },
+    
+    reset() {
+        this.entries = [];
+        this.save();
+    }
+};
+
+// Feature #25: Daily/Weekly Challenges
+const CHALLENGES = {
+    // Daily challenges
+    DAILY_SCORE_500: { id: 'daily_score_500', name: 'Score 500', desc: 'Score 500 points in one game', icon: '🎯', type: 'score', target: 500, reward: 25 },
+    DAILY_LEVEL_3: { id: 'daily_level_3', name: 'Reach Level 3', desc: 'Reach level 3', icon: '📊', type: 'level', target: 3, reward: 30 },
+    DAILY_COMBO_5: { id: 'daily_combo_5', name: '5x Combo', desc: 'Get a 5x combo', icon: '🔥', type: 'combo', target: 5, reward: 35 },
+    DAILY_MOVES_10: { id: 'daily_moves_10', name: 'Play 10 Games', desc: 'Play 10 games', icon: '🎮', type: 'games', target: 10, reward: 40 },
+    DAILY_PERFECT: { id: 'daily_perfect', name: 'Perfect Game', desc: 'Complete a level with max score', icon: '💯', type: 'perfect', target: 1, reward: 50 },
+    
+    // Weekly challenges
+    WEEKLY_SCORE_3000: { id: 'weekly_score_3000', name: 'Score 3,000', desc: 'Score 3,000 total this week', icon: '⭐', type: 'totalScore', target: 3000, reward: 100 },
+    WEEKLY_LEVEL_10: { id: 'weekly_level_10', name: 'Reach Level 10', desc: 'Reach level 10 this week', icon: '🏆', type: 'maxLevel', target: 10, reward: 150 },
+    WEEKLY_COMBO_10: { id: 'weekly_combo_10', name: '10x Combo', desc: 'Get a 10x combo this week', icon: '💥', type: 'maxCombo', target: 10, reward: 200 },
+    WEEKLY_GAMES_50: { id: 'weekly_games_50', name: 'Play 50 Games', desc: 'Play 50 games this week', icon: '🎯', type: 'totalGames', target: 50, reward: 175 }
+};
+
+const ChallengeManager = {
+    daily: [],
+    weekly: [],
+    dailyProgress: {},
+    weeklyProgress: {},
+    lastDailyReset: null,
+    lastWeeklyReset: null,
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_challenges');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.daily = data.daily || [];
+            this.weekly = data.weekly || [];
+            this.dailyProgress = data.dailyProgress || {};
+            this.weeklyProgress = data.weeklyProgress || {};
+            this.lastDailyReset = data.lastDailyReset || null;
+            this.lastWeeklyReset = data.lastWeeklyReset || null;
+        }
+        
+        this.checkReset();
+        this.generateDaily();
+        this.generateWeekly();
+    },
+    
+    checkReset() {
+        const now = Date.now();
+        
+        // Check daily reset (every 24 hours from first launch)
+        if (!this.lastDailyReset || now - this.lastDailyReset > 24 * 60 * 60 * 1000) {
+            this.dailyProgress = {};
+            this.lastDailyReset = now;
+            this.save();
+        }
+        
+        // Check weekly reset (every 7 days)
+        if (!this.lastWeeklyReset || now - this.lastWeeklyReset > 7 * 24 * 60 * 60 * 1000) {
+            this.weeklyProgress = {};
+            this.lastWeeklyReset = now;
+            this.save();
+        }
+    },
+    
+    generateDaily() {
+        const dailyKeys = ['DAILY_SCORE_500', 'DAILY_LEVEL_3', 'DAILY_COMBO_5', 'DAILY_MOVES_10', 'DAILY_PERFECT'];
+        if (this.daily.length === 0 || this.shouldRegenerate(this.lastDailyReset)) {
+            this.daily = dailyKeys.slice(0, 3).map(key => CHALLENGES[key]);
+            this.save();
+        }
+    },
+    
+    generateWeekly() {
+        if (this.weekly.length === 0 || this.shouldRegenerate(this.lastWeeklyReset)) {
+            this.weekly = ['WEEKLY_SCORE_3000', 'WEEKLY_LEVEL_10', 'WEEKLY_COMBO_10'].map(k => CHALLENGES[k]);
+            this.save();
+        }
+    },
+    
+    shouldRegenerate(lastReset) {
+        if (!lastReset) return true;
+        return Date.now() - lastReset > 24 * 60 * 60 * 1000;
+    },
+    
+    updateProgress(type, value) {
+        // Update daily
+        this.daily.forEach(challenge => {
+            if (challenge.type === type) {
+                this.dailyProgress[challenge.id] = (this.dailyProgress[challenge.id] || 0) + value;
+            }
+        });
+        
+        // Update weekly
+        this.weekly.forEach(challenge => {
+            if (challenge.type === type) {
+                this.weeklyProgress[challenge.id] = (this.weeklyProgress[challenge.id] || 0) + value;
+            }
+        });
+        
+        this.checkCompleted();
+        this.save();
+    },
+    
+    checkCompleted() {
+        [...this.daily, ...this.weekly].forEach(challenge => {
+            const progress = (this.dailyProgress[challenge.id] || 0) + (this.weeklyProgress[challenge.id] || 0);
+            if (progress >= challenge.target && !this.completedToday(challenge.id)) {
+                // Award reward
+                game.coins = (game.coins || 0) + challenge.reward;
+                showNotification(`🎉 Challenge Complete: ${challenge.name}\n+${challenge.reward} coins!`, 3000);
+                SoundManager.achievement();
+                
+                // Mark as completed (store in completed list)
+                this.markCompleted(challenge.id);
+            }
+        });
+    },
+    
+    completedToday(challengeId) {
+        const completed = JSON.parse(localStorage.getItem('threeInRow_challenges_completed') || '[]');
+        return completed.includes(challengeId);
+    },
+    
+    markCompleted(challengeId) {
+        const completed = JSON.parse(localStorage.getItem('threeInRow_challenges_completed') || '[]');
+        if (!completed.includes(challengeId)) {
+            completed.push(challengeId);
+            localStorage.setItem('threeInRow_challenges_completed', JSON.stringify(completed));
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_challenges', JSON.stringify({
+            daily: this.daily,
+            weekly: this.weekly,
+            dailyProgress: this.dailyProgress,
+            weeklyProgress: this.weeklyProgress,
+            lastDailyReset: this.lastDailyReset,
+            lastWeeklyReset: this.lastWeeklyReset
+        }));
+    },
+    
+    getProgress(challenge) {
+        const progress = (this.dailyProgress[challenge.id] || 0) + (this.weeklyProgress[challenge.id] || 0);
+        return Math.min(progress, challenge.target);
+    },
+    
+    reset() {
+        this.daily = [];
+        this.weekly = [];
+        this.dailyProgress = {};
+        this.weeklyProgress = {};
+        this.lastDailyReset = null;
+        this.lastWeeklyReset = null;
+        localStorage.removeItem('threeInRow_challenges_completed');
+        this.save();
+    }
+};
+
+// Feature #28: New Gem Types
+const GEM_TYPES = {
+    NORMAL: 'normal',
+    BOMB: 'bomb',         // Clears 3x3 area
+    COLOR_CLEAR: 'color_clear',  // Clears all of one color
+    BLOCK: 'block',       // Clears row + column
+    FREEZE: 'freeze',    // Adds 10 seconds
+    SHIELD: 'shield'     // Protects from move penalty
+};
+
+const GemTypeManager = {
+    // Feature #26: New gem types with special effects
+    createSpecial(type) {
+        return {
+            type: type,
+            createdAt: Date.now()
+        };
+    },
+    
+    activateGem(gem, grid) {
+        const { row, col } = gem;
+        
+        switch (gem.specialType) {
+            case GEM_TYPES.BOMB:
+                // Clear 3x3 area
+                this.clearArea(grid, row, col, 1);
+                AchievementManager.incrementStat('powerUpsUsed.bomb');
+                SoundManager.powerUp();
+                break;
+                
+            case GEM_TYPES.COLOR_CLEAR:
+                // Clear all gems of the same color
+                const color = grid[row][col].color;
+                this.clearByColor(grid, color);
+                AchievementManager.incrementStat('powerUpsUsed.colorClear');
+                SoundManager.powerUp();
+                break;
+                
+            case GEM_TYPES.BLOCK:
+                // Clear row and column
+                this.clearRow(grid, row);
+                this.clearCol(grid, col);
+                SoundManager.powerUp();
+                break;
+                
+            case GEM_TYPES.FREEZE:
+                // Add 10 seconds to timer
+                game.timer += 10;
+                showNotification('⏱️ +10 seconds!', 2000);
+                SoundManager.purchase();
+                break;
+                
+            case GEM_TYPES.SHIELD:
+                // Mark as shielded (next penalty is ignored)
+                game.shieldActive = true;
+                showNotification('🛡️ Shield activated!', 2000);
+                break;
+        }
+    },
+    
+    clearArea(grid, centerRow, centerCol, radius) {
+        for (let r = centerRow - radius; r <= centerRow + radius; r++) {
+            for (let c = centerCol - radius; c <= centerCol + radius; c++) {
+                if (r >= 0 && r < CONFIG.gridRows && c >= 0 && c < CONFIG.gridCols) {
+                    if (grid[r][c]) {
+                        grid[r][c].cleared = true;
+                    }
+                }
+            }
+        }
+    },
+    
+    clearRow(grid, row) {
+        for (let c = 0; c < CONFIG.gridCols; c++) {
+            if (grid[row][c]) grid[row][c].cleared = true;
+        }
+    },
+    
+    clearCol(grid, col) {
+        for (let r = 0; r < CONFIG.gridRows; r++) {
+            if (grid[r][col]) grid[r][col].cleared = true;
+        }
+    },
+    
+    clearByColor(grid, color) {
+        for (let r = 0; r < CONFIG.gridRows; r++) {
+            for (let c = 0; c < CONFIG.gridCols; c++) {
+                if (grid[r][c] && grid[r][c].color === color) {
+                    grid[r][c].cleared = true;
+                }
+            }
+        }
+    }
+};
+
+// Feature #29: Event System
+const EVENT_TYPES = {
+    DOUBLE_SCORE: { id: 'double_score', name: '2x Score', desc: 'All points doubled!', color: '#f1c40f' },
+    EXTRA_TIME: { id: 'extra_time', name: '+30s Time', desc: 'Extra time bonus!', color: '#3498db' },
+    BONUS_MOVES: { id: 'bonus_moves', name: '+10 Moves', desc: 'Extra moves!', color: '#2ecc71' },
+    RAINBOW_GEMS: { id: 'rainbow', name: 'Rainbow Gems', desc: 'Colorful gems!', color: '#9b59b6' }
+};
+
+const EventManager = {
+    activeEvent: null,
+    eventEndTime: null,
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_event');
+        if (saved) {
+            const data = JSON.parse(saved);
+            if (data.endTime > Date.now()) {
+                this.activeEvent = data.event;
+                this.eventEndTime = data.endTime;
+            }
+        }
+    },
+    
+    save() {
+        if (this.activeEvent) {
+            localStorage.setItem('threeInRow_event', JSON.stringify({
+                event: this.activeEvent,
+                endTime: this.eventEndTime
+            }));
+        } else {
+            localStorage.removeItem('threeInRow_event');
+        }
+    },
+    
+    startEvent(eventType) {
+        // Events last 2 hours
+        this.activeEvent = EVENT_TYPES[eventType];
+        this.eventEndTime = Date.now() + 2 * 60 * 60 * 1000;
+        this.save();
+        showNotification(`🎉 ${this.activeEvent.name}\n${this.activeEvent.desc}`, 4000);
+    },
+    
+    endEvent() {
+        this.activeEvent = null;
+        this.eventEndTime = null;
+        this.save();
+    },
+    
+    isActive() {
+        return this.activeEvent && this.eventEndTime > Date.now();
+    },
+    
+    getTimeRemaining() {
+        if (!this.activeEvent) return 0;
+        return Math.max(0, this.eventEndTime - Date.now());
+    },
+    
+    getMultiplier() {
+        return this.activeEvent?.id === 'double_score' ? 2 : 1;
+    },
+    
+    reset() {
+        this.activeEvent = null;
+        this.eventEndTime = null;
+        this.save();
+    }
+};
+
+// Feature #31: Quest System
+const QUESTS = {
+    // Tutorial quests (shown sequentially)
+    QUEST_MATCH_3: { id: 'match_3', order: 1, name: 'First Match', desc: 'Match 3 gems for the first time', icon: '🎮', type: 'match', target: 1, reward: 10 },
+    QUEST_SCORE_100: { id: 'score_100', order: 2, name: 'Getting Started', desc: 'Score 100 points', icon: '⭐', type: 'score', target: 100, reward: 15 },
+    QUEST_LEVEL_2: { id: 'level_2', order: 3, name: 'Level Up!', desc: 'Reach level 2', icon: '📈', type: 'level', target: 2, reward: 20 },
+    QUEST_COMBO_3: { id: 'combo_3', order: 4, name: 'Combo Starter', desc: 'Get a 3x combo', icon: '🔥', type: 'combo', target: 3, reward: 25 },
+    QUEST_COMPLETE: { id: 'complete', order: 5, name: 'Winner!', desc: 'Complete your first level', icon: '🏆', type: 'complete', target: 1, reward: 50 },
+    
+    // Story quests (unlock as you progress)
+    QUEST_MASTER_10: { id: 'master_10', order: 6, name: 'Score Master', desc: 'Score 1,000 total', icon: '👑', type: 'totalScore', target: 1000, reward: 75 },
+    QUEST_COMBO_MASTER: { id: 'combo_master', order: 7, name: 'Combo King', desc: 'Get a 5x combo', icon: '💪', type: 'combo', target: 5, reward: 100 },
+    QUEST_COLLECTOR: { id: 'collector', order: 8, name: 'Gem Collector', desc: 'Clear 100 gems', icon: '💎', type: 'gemsCleared', target: 100, reward: 80 },
+    QUEST_UNSTOPPABLE: { id: 'unstoppable', order: 9, name: 'Unstoppable', desc: 'Get a 10x combo', icon: '⚡', type: 'combo', target: 10, reward: 150 }
+};
+
+const QuestManager = {
+    unlockedQuests: [],
+    completedQuests: [],
+    questProgress: {},
+    currentQuestOrder: 1,
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_quests');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.unlockedQuests = data.unlockedQuests || [];
+            this.completedQuests = data.completedQuests || [];
+            this.questProgress = data.questProgress || {};
+            this.currentQuestOrder = data.currentQuestOrder || 1;
+        }
+        
+        // Auto-unlock first quest
+        if (this.unlockedQuests.length === 0) {
+            this.unlockNextQuest();
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_quests', JSON.stringify({
+            unlockedQuests: this.unlockedQuests,
+            completedQuests: this.completedQuests,
+            questProgress: this.questProgress,
+            currentQuestOrder: this.currentQuestOrder
+        }));
+    },
+    
+    unlockNextQuest() {
+        const nextQuest = Object.values(QUESTS).find(q => q.order === this.currentQuestOrder);
+        if (nextQuest && !this.unlockedQuests.includes(nextQuest.id)) {
+            this.unlockedQuests.push(nextQuest.id);
+            showNotification(`📜 New Quest: ${nextQuest.name}\n${nextQuest.desc}`, 4000);
+            this.save();
+        }
+    },
+    
+    updateProgress(type, value) {
+        const currentQuest = this.getCurrentQuest();
+        if (!currentQuest) return;
+        if (currentQuest.type !== type) return;
+        
+        this.questProgress[currentQuest.id] = (this.questProgress[currentQuest.id] || 0) + value;
+        
+        // Check completion
+        if (this.questProgress[currentQuest.id] >= currentQuest.target) {
+            this.completeQuest(currentQuest);
+        }
+        
+        this.save();
+    },
+    
+    completeQuest(quest) {
+        if (this.completedQuests.includes(quest.id)) return;
+        
+        this.completedQuests.push(quest.id);
+        game.coins = (game.coins || 0) + quest.reward;
+        
+        showNotification(`✅ Quest Complete: ${quest.name}\n+${quest.reward} coins!`, 3000);
+        SoundManager.levelComplete();
+        
+        // Unlock next quest
+        this.currentQuestOrder++;
+        this.unlockNextQuest();
+    },
+    
+    getCurrentQuest() {
+        return Object.values(QUESTS).find(q => q.order === this.currentQuestOrder);
+    },
+    
+    getProgress(quest) {
+        return Math.min(this.questProgress[quest.id] || 0, quest.target);
+    },
+    
+    reset() {
+        this.unlockedQuests = [];
+        this.completedQuests = [];
+        this.questProgress = {};
+        this.currentQuestOrder = 1;
+        this.save();
+    }
+};
+
+// Feature #32: Daily Spin Wheel
+const DAILY_REWARDS = [
+    { type: 'coins', value: 50, weight: 30, icon: '🪙' },
+    { type: 'coins', value: 100, weight: 25, icon: '🪙' },
+    { type: 'coins', value: 200, weight: 15, icon: '🪙' },
+    { type: 'gems', value: 5, weight: 10, icon: '💎' },
+    { type: 'gems', value: 10, weight: 8, icon: '💎' },
+    { type: 'boost_moves', value: 3, weight: 7, icon: '👟' },
+    { type: 'boost_time', value: 10, weight: 5, icon: '⏱️' }
+];
+
+const DailySpinManager = {
+    lastSpinTime: null,
+    spinsRemaining: 1,
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_dailySpin');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.lastSpinTime = data.lastSpinTime;
+            this.spinsRemaining = data.spinsRemaining || 1;
+            
+            // Check if new day
+            if (this.shouldReset()) {
+                this.spinsRemaining = 1;
+                this.lastSpinTime = null;
+            }
+        }
+    },
+    
+    shouldReset() {
+        if (!this.lastSpinTime) return true;
+        const lastDate = new Date(this.lastSpinTime).toDateString();
+        const today = new Date().toDateString();
+        return lastDate !== today;
+    },
+    
+    canSpin() {
+        return this.spinsRemaining > 0;
+    },
+    
+    spin() {
+        if (!this.canSpin()) {
+            showNotification('No spins remaining today!', 2000);
+            return null;
+        }
+        
+        // Select weighted random reward
+        const totalWeight = DAILY_REWARDS.reduce((sum, r) => sum + r.weight, 0);
+        let random = Math.random() * totalWeight;
+        
+        let selected = DAILY_REWARDS[0];
+        for (const reward of DAILY_REWARDS) {
+            random -= reward.weight;
+            if (random <= 0) {
+                selected = reward;
+                break;
+            }
+        }
+        
+        // Apply reward
+        if (selected.type === 'coins') {
+            game.coins = (game.coins || 0) + selected.value;
+        } else if (selected.type === 'gems') {
+            game.gems = (game.gems || 0) + selected.value;
+        } else if (selected.type === 'boost_moves') {
+            ShopManager.activeBoosts.extraMoves += selected.value;
+        } else if (selected.type === 'boost_time') {
+            ShopManager.activeBoosts.extraTime += selected.value;
+        }
+        
+        // Update state
+        this.spinsRemaining--;
+        this.lastSpinTime = Date.now();
+        this.save();
+        
+        return selected;
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_dailySpin', JSON.stringify({
+            lastSpinTime: this.lastSpinTime,
+            spinsRemaining: this.spinsRemaining
+        }));
+    },
+    
+    reset() {
+        this.lastSpinTime = null;
+        this.spinsRemaining = 1;
+        this.save();
+    }
+};
+
+// Feature #35: Collection System
+const CollectionManager = {
+    unlocked: {
+        achievements: new Set(),
+        gems: new Set(['red', 'blue', 'green', 'yellow']),
+        powerUps: new Set(),
+        cosmetics: new Set()
+    },
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_collection');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.unlocked.achievements = new Set(data.achievements || []);
+            this.unlocked.gems = new Set(data.gems || ['red', 'blue', 'green', 'yellow']);
+            this.unlocked.powerUps = new Set(data.powerUps || []);
+            this.unlocked.cosmetics = new Set(data.cosmetics || []);
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_collection', JSON.stringify({
+            achievements: Array.from(this.unlocked.achievements),
+            gems: Array.from(this.unlocked.gems),
+            powerUps: Array.from(this.unlocked.powerUps),
+            cosmetics: Array.from(this.unlocked.cosmetics)
+        }));
+    },
+    
+    unlockAchievement(id) {
+        if (!this.unlocked.achievements.has(id)) {
+            this.unlocked.achievements.add(id);
+            this.save();
+        }
+    },
+    
+    unlockGem(color) {
+        if (!this.unlocked.gems.has(color)) {
+            this.unlocked.gems.add(color);
+            this.save();
+        }
+    },
+    
+    unlockPowerUp(type) {
+        if (!this.unlocked.powerUps.has(type)) {
+            this.unlocked.powerUps.add(type);
+            this.save();
+        }
+    },
+    
+    unlockCosmetic(id) {
+        if (!this.unlocked.cosmetics.has(id)) {
+            this.unlocked.cosmetics.add(id);
+            this.save();
+        }
+    },
+    
+    getStats() {
+        const achTotal = Object.keys(ACHIEVEMENTS).length;
+        return {
+            achievements: `${this.unlocked.achievements.size}/${achTotal}`,
+            gems: this.unlocked.gems.size,
+            powerUps: this.unlocked.powerUps.size,
+            cosmetics: this.unlocked.cosmetics.size
+        };
+    },
+    
+    reset() {
+        this.unlocked = {
+            achievements: new Set(),
+            gems: new Set(['red', 'blue', 'green', 'yellow']),
+            powerUps: new Set(),
+            cosmetics: new Set()
+        };
+        this.save();
+    }
+};
+
+// Feature #36: Tutorial System
+const TUTORIAL_STEPS = [
+    { id: 'welcome', name: 'Welcome', message: 'Welcome to Three-in-a-Row! Tap Play to start.', position: 'center' },
+    { id: 'swap', name: 'How to Play', message: 'Tap two adjacent gems to swap them and match 3 in a row!', position: 'grid' },
+    { id: 'match', name: 'Matching', message: 'Match 3 or more gems of the same color to clear them!', position: 'grid' },
+    { id: 'score', name: 'Scoring', message: 'Reach the target score before time runs out to win!', position: 'hud' },
+    { id: 'combo', name: 'Combos', message: 'Chain matches together for bonus points and combo multipliers!', position: 'center' },
+    { id: 'complete', name: 'You\'re Ready!', message: 'You\'re all set! Good luck and have fun!', position: 'center' }
+];
+
+const TutorialManager = {
+    currentStep: 0,
+    isActive: false,
+    completed: false,
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_tutorial');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.currentStep = data.currentStep || 0;
+            this.completed = data.completed || false;
+        }
+    },
+    
+    start() {
+        this.isActive = true;
+        this.currentStep = 0;
+        this.showCurrentStep();
+    },
+    
+    showCurrentStep() {
+        const step = TUTORIAL_STEPS[this.currentStep];
+        if (!step) {
+            this.complete();
+            return;
+        }
+        
+        showNotification(step.message, 5000);
+    },
+    
+    next() {
+        this.currentStep++;
+        if (this.currentStep >= TUTORIAL_STEPS.length) {
+            this.complete();
+        } else {
+            this.save();
+            this.showCurrentStep();
+        }
+    },
+    
+    complete() {
+        this.isActive = false;
+        this.completed = true;
+        this.save();
+        showNotification('🎉 Tutorial Complete!', 2000);
+    },
+    
+    skip() {
+        this.completed = true;
+        this.isActive = false;
+        this.save();
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_tutorial', JSON.stringify({
+            currentStep: this.currentStep,
+            completed: this.completed
+        }));
+    },
+    
+    reset() {
+        this.currentStep = 0;
+        this.isActive = false;
+        this.completed = false;
+        this.save();
+    },
+    
+    isFirstTime() {
+        return !this.completed && this.currentStep === 0;
+    }
+};
+
+// Feature #37: Statistics Page
+const StatsManager = {
+    stats: {
+        totalGames: 0,
+        totalScore: 0,
+        totalGemsCleared: 0,
+        totalMoves: 0,
+        totalTime: 0,
+        bestScore: 0,
+        bestLevel: 0,
+        bestCombo: 0,
+        perfectLevels: 0,
+        winsWithOneMove: 0,
+        currentStreak: 0,
+        longestStreak: 0,
+        lastPlayed: null
+    },
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_stats');
+        if (saved) {
+            this.stats = { ...this.stats, ...JSON.parse(saved) };
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_stats', JSON.stringify(this.stats));
+    },
+    
+    recordGame(gameData) {
+        this.stats.totalGames++;
+        this.stats.totalScore += gameData.score;
+        this.stats.totalGemsCleared += gameData.gemsCleared || 0;
+        this.stats.totalMoves += gameData.movesUsed || 0;
+        this.stats.totalTime += gameData.duration || 0;
+        this.stats.lastPlayed = Date.now();
+        
+        if (gameData.score > this.stats.bestScore) this.stats.bestScore = gameData.score;
+        if (gameData.level > this.stats.bestLevel) this.stats.bestLevel = gameData.level;
+        if (gameData.combo > this.stats.bestCombo) this.stats.bestCombo = gameData.combo;
+        if (gameData.perfect) this.stats.perfectLevels++;
+        if (gameData.oneMoveLeft) this.stats.winsWithOneMove++;
+        
+        this.save();
+    },
+    
+    getAverageScore() {
+        return this.stats.totalGames > 0 ? Math.round(this.stats.totalScore / this.stats.totalGames) : 0;
+    },
+    
+    getAverageLevel() {
+        return this.stats.totalGames > 0 ? (this.stats.totalLevel / this.stats.totalGames).toFixed(1) : 0;
+    },
+    
+    getFormattedStats() {
+        const s = this.stats;
+        return {
+            'Games Played': s.totalGames,
+            'Total Score': s.totalScore.toLocaleString(),
+            'Best Score': s.bestScore.toLocaleString(),
+            'Best Level': s.bestLevel,
+            'Best Combo': s.bestCombo + 'x',
+            'Gems Cleared': s.totalGemsCleared.toLocaleString(),
+            'Perfect Levels': s.perfectLevels,
+            'One-Move Wins': s.winsWithOneMove,
+            'Total Time': this.formatTime(s.totalTime),
+            'Avg Score/Game': this.getAverageScore().toLocaleString()
+        };
+    },
+    
+    formatTime(seconds) {
+        const hrs = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        if (hrs > 0) return `${hrs}h ${mins}m`;
+        return `${mins}m`;
+    },
+    
+    reset() {
+        this.stats = {
+            totalGames: 0,
+            totalScore: 0,
+            totalGemsCleared: 0,
+            totalMoves: 0,
+            totalTime: 0,
+            bestScore: 0,
+            bestLevel: 0,
+            bestCombo: 0,
+            perfectLevels: 0,
+            winsWithOneMove: 0,
+            currentStreak: 0,
+            longestStreak: 0,
+            lastPlayed: null
+        };
+        this.save();
+    }
+};
+
 // Sound Manager - Feature #12: Sound Effects
 const SoundManager = {
     audioContext: null,
@@ -517,6 +1375,14 @@ const SoundManager = {
         // Pleasant "ding" for purchase
         this.play(880, 0.1, 'sine', 0.3);
         setTimeout(() => this.play(1100, 0.15, 'sine', 0.25), 80);
+    },
+    
+    powerUp() {
+        // Magical power-up activation sound
+        this.play(523.25, 0.1, 'sine', 0.25);
+        setTimeout(() => this.play(659.25, 0.1, 'sine', 0.25), 80);
+        setTimeout(() => this.play(783.99, 0.1, 'sine', 0.25), 160);
+        setTimeout(() => this.play(1046.5, 0.2, 'sine', 0.35), 240);
     },
     
     toggle() {
@@ -714,6 +1580,364 @@ ShopManager.init = function() {
         }
     }
     console.log('Shop Manager initialized');
+};
+
+// Leaderboard Manager - Feature #24
+LeaderboardManager.toggle = function() {
+    this.isOpen = !this.isOpen;
+    const modal = document.getElementById('leaderboard-modal');
+    if (modal) {
+        modal.classList.toggle('hidden', !this.isOpen);
+        if (this.isOpen) {
+            this.render();
+        }
+    }
+};
+
+LeaderboardManager.render = function() {
+    const listEl = document.getElementById('leaderboard-list');
+    if (!listEl) return;
+    
+    const topEntries = this.getTop('all_time', 10);
+    const playerEntry = this.getPlayerEntry(this.getScore().playerId);
+    
+    listEl.innerHTML = '';
+    topEntries.forEach((entry, index) => {
+        const div = document.createElement('div');
+        div.className = 'leaderboard-item';
+        div.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        `;
+        div.innerHTML = `
+            <span>#${index + 1} Player</span>
+            <span>${entry.score.toLocaleString()} pts</span>
+        `;
+        listEl.appendChild(div);
+    });
+};
+
+LeaderboardManager.init = function() {
+    this.init();
+    const modal = document.getElementById('leaderboard-modal');
+    if (modal) {
+        const closeBtn = document.getElementById('close-leaderboard');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+    }
+};
+
+// Challenge Manager - Feature #25
+ChallengeManager.toggle = function() {
+    this.isOpen = !this.isOpen;
+    const modal = document.getElementById('challenges-modal');
+    if (modal) {
+        modal.classList.toggle('hidden', !this.isOpen);
+        if (this.isOpen) {
+            this.render();
+        }
+    }
+};
+
+ChallengeManager.render = function() {
+    const dailyEl = document.getElementById('daily-challenges');
+    const weeklyEl = document.getElementById('weekly-challenges');
+    if (!dailyEl || !weeklyEl) return;
+    
+    dailyEl.innerHTML = '';
+    this.daily.forEach(challenge => {
+        const progress = this.getProgress(challenge);
+        const completed = progress >= challenge.target;
+        const div = document.createElement('div');
+        div.className = `challenge-item ${completed ? 'completed' : ''}`;
+        div.innerHTML = `
+            <div class="challenge-icon">${challenge.icon}</div>
+            <div class="challenge-info">
+                <div class="challenge-name">${challenge.name}</div>
+                <div class="challenge-desc">${challenge.desc}</div>
+                <div class="challenge-progress">${progress}/${challenge.target}</div>
+            </div>
+            <div class="challenge-reward">+${challenge.reward}</div>
+        `;
+        dailyEl.appendChild(div);
+    });
+    
+    weeklyEl.innerHTML = '';
+    this.weekly.forEach(challenge => {
+        const progress = this.getProgress(challenge);
+        const completed = progress >= challenge.target;
+        const div = document.createElement('div');
+        div.className = `challenge-item ${completed ? 'completed' : ''}`;
+        div.innerHTML = `
+            <div class="challenge-icon">${challenge.icon}</div>
+            <div class="challenge-info">
+                <div class="challenge-name">${challenge.name}</div>
+                <div class="challenge-desc">${challenge.desc}</div>
+                <div class="challenge-progress">${progress}/${challenge.target}</div>
+            </div>
+            <div class="challenge-reward">+${challenge.reward}</div>
+        `;
+        weeklyEl.appendChild(div);
+    });
+};
+
+ChallengeManager.init = function() {
+    this.init();
+    const modal = document.getElementById('challenges-modal');
+    if (modal) {
+        const closeBtn = document.getElementById('close-challenges');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+    }
+};
+
+// Event Manager - Feature #29
+EventManager.toggle = function() {
+    this.isOpen = !this.isOpen;
+    const modal = document.getElementById('events-modal');
+    if (modal) {
+        modal.classList.toggle('hidden', !this.isOpen);
+        if (this.isOpen) {
+            this.render();
+        }
+    }
+};
+
+EventManager.render = function() {
+    const displayEl = document.getElementById('event-display');
+    const listEl = document.getElementById('events-list');
+    if (!displayEl || !listEl) return;
+    
+    if (this.activeEvent) {
+        const remaining = Math.ceil(this.getTimeRemaining() / 60000);
+        displayEl.innerHTML = `
+            <h3>${this.activeEvent.icon} ${this.activeEvent.name}</h3>
+            <p>${this.activeEvent.desc}</p>
+            <p>${remaining} min remaining</p>
+        `;
+    } else {
+        displayEl.innerHTML = '<p>No active events</p>';
+    }
+};
+
+EventManager.init = function() {
+    this.init();
+    const modal = document.getElementById('events-modal');
+    if (modal) {
+        const closeBtn = document.getElementById('close-events');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+    }
+};
+
+// Quest Manager - Feature #31
+QuestManager.toggle = function() {
+    this.isOpen = !this.isOpen;
+    const modal = document.getElementById('quests-modal');
+    if (modal) {
+        modal.classList.toggle('hidden', !this.isOpen);
+        if (this.isOpen) {
+            this.render();
+        }
+    }
+};
+
+QuestManager.render = function() {
+    const currentEl = document.getElementById('current-quest');
+    const progressEl = document.getElementById('quest-progress');
+    if (!currentEl || !progressEl) return;
+    
+    const quest = this.getCurrentQuest();
+    if (!quest) {
+        currentEl.innerHTML = '<p>All quests completed!</p>';
+        progressEl.innerHTML = '';
+        return;
+    }
+    
+    const progress = this.getProgress(quest);
+    const pct = Math.round((progress / quest.target) * 100);
+    
+    currentEl.innerHTML = `
+        <h3>${quest.icon} ${quest.name}</h3>
+        <p>${quest.desc}</p>
+        <div class="quest-progress-bar">
+            <div class="quest-progress-fill" style="width: ${pct}%"></div>
+        </div>
+    `;
+    progressEl.innerHTML = `<p>Progress: ${progress}/${quest.target}</p>`;
+};
+
+QuestManager.init = function() {
+    this.init();
+    const modal = document.getElementById('quests-modal');
+    if (modal) {
+        const closeBtn = document.getElementById('close-quests');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+    }
+};
+
+// Daily Spin Manager - Feature #32
+DailySpinManager.toggle = function() {
+    this.isOpen = !this.isOpen;
+    const modal = document.getElementById('daily-spin-modal');
+    if (modal) {
+        modal.classList.toggle('hidden', !this.isOpen);
+    }
+};
+
+DailySpinManager.spin = function() {
+    const btn = document.getElementById('spin-btn');
+    if (!this.canSpin()) {
+        btn.disabled = true;
+        btn.textContent = 'Come back tomorrow!';
+        return;
+    }
+    
+    const result = this.spin();
+    if (result) {
+        const resultEl = document.getElementById('spin-result');
+        resultEl.innerHTML = `${result.icon} +${result.value} ${result.type === 'coins' ? 'Coins' : result.type === 'gems' ? 'Gems' : result.type}!`;
+        btn.disabled = true;
+        btn.textContent = 'Come back tomorrow!';
+    }
+};
+
+DailySpinManager.init = function() {
+    this.init();
+    const modal = document.getElementById('daily-spin-modal');
+    if (modal) {
+        const spinBtn = document.getElementById('spin-btn');
+        const closeBtn = document.getElementById('close-spin');
+        
+        if (spinBtn) {
+            spinBtn.addEventListener('click', () => this.spin());
+            if (!this.canSpin()) {
+                spinBtn.disabled = true;
+                spinBtn.textContent = 'Come back tomorrow!';
+            }
+        }
+        
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+    }
+};
+
+// Collection Manager - Feature #35
+CollectionManager.toggle = function() {
+    this.isOpen = !this.isOpen;
+    const modal = document.getElementById('collection-modal');
+    if (modal) {
+        modal.classList.toggle('hidden', !this.isOpen);
+        if (this.isOpen) {
+            this.render('achievements');
+        }
+    }
+};
+
+CollectionManager.render = function(tab) {
+    const contentEl = document.getElementById('collection-content');
+    if (!contentEl) return;
+    
+    contentEl.innerHTML = '';
+    
+    if (tab === 'achievements') {
+        const achTotal = Object.keys(ACHIEVEMENTS).length;
+        contentEl.innerHTML = `
+            <p>Achievements: ${this.unlocked.achievements.size}/${achTotal}</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;">
+                ${Array.from(this.unlocked.achievements).map(id => 
+                    ACHIEVEMENTS[id] ? `<div style="font-size: 24px;" title="${ACHIEVEMENTS[id].name}">${ACHIEVEMENTS[id].icon}</div>` : ''
+                ).join('')}
+            </div>
+        `;
+    } else if (tab === 'gems') {
+        contentEl.innerHTML = `
+            <p>Gems: ${this.unlocked.gems.size} types</p>
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                ${Array.from(this.unlocked.gems).map(color => 
+                    `<div style="width: 40px; height: 40px; background: ${GEM_COLORS[GEM_COLORS.indexOf(color)]}; border-radius: 50%;"></div>`
+                ).join('')}
+            </div>
+        `;
+    } else if (tab === 'powerups') {
+        contentEl.innerHTML = `
+            <p>Power-ups: ${this.unlocked.powerUps.size} unlocked</p>
+            <div style="font-size: 20px; margin-top: 12px;">
+                💣 Bomb, 🌈 Color Clear
+            </div>
+        `;
+    }
+};
+
+CollectionManager.init = function() {
+    this.init();
+    const modal = document.getElementById('collection-modal');
+    if (modal) {
+        const closeBtn = document.getElementById('close-collection');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+        
+        // Tab switching
+        modal.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                modal.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                this.render(e.target.dataset.tab);
+            });
+        });
+    }
+};
+
+// Stats Manager - Feature #37
+StatsManager.toggle = function() {
+    this.isOpen = !this.isOpen;
+    const modal = document.getElementById('stats-modal');
+    if (modal) {
+        modal.classList.toggle('hidden', !this.isOpen);
+        if (this.isOpen) {
+            this.render();
+        }
+    }
+};
+
+StatsManager.render = function() {
+    const listEl = document.getElementById('stats-list');
+    if (!listEl) return;
+    
+    const stats = this.getFormattedStats();
+    listEl.innerHTML = '';
+    
+    for (const [label, value] of Object.entries(stats)) {
+        const div = document.createElement('div');
+        div.className = 'stat-row';
+        div.innerHTML = `
+            <span class="stat-label">${label}</span>
+            <span class="stat-value">${value}</span>
+        `;
+        listEl.appendChild(div);
+    }
+};
+
+StatsManager.init = function() {
+    this.init();
+    const modal = document.getElementById('stats-modal');
+    if (modal) {
+        const closeBtn = document.getElementById('close-stats');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.toggle());
+        }
+    }
 };
 
 // Selection animation state
@@ -2336,6 +3560,77 @@ function drawStartScreen() {
     ctx.font = '12px Arial';
     ctx.fillText('💎 Shop', CONFIG.canvasWidth - 70, shopBtnY + 24);
 
+    // Second row of buttons
+    const row2Y = shopBtnY + 50;
+    const btnWidth2 = 80;
+    const btnHeight2 = 32;
+    const btnSpacing = 10;
+    const startX2 = (CONFIG.canvasWidth - (btnWidth2 * 5 + btnSpacing * 4)) / 2;
+    
+    // Daily spin button
+    const spinReady = DailySpinManager.canSpin();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(startX2 + 3, row2Y + 3, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = spinReady ? '#e74c3c' : '#4a4a6a';
+    ctx.beginPath();
+    ctx.roundRect(startX2, row2Y, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '11px Arial';
+    ctx.fillText('🎡 Spin', startX2 + btnWidth2 / 2, row2Y + 21);
+    
+    // Challenges button
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(startX2 + btnWidth2 + btnSpacing + 3, row2Y + 3, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = '#3498db';
+    ctx.beginPath();
+    ctx.roundRect(startX2 + btnWidth2 + btnSpacing, row2Y, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('🎯', startX2 + btnWidth2 + btnSpacing + btnWidth2 / 2, row2Y + 21);
+    
+    // Events button
+    const hasEvent = EventManager.isActive();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(startX2 + (btnWidth2 + btnSpacing) * 2 + 3, row2Y + 3, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = hasEvent ? '#f1c40f' : '#4a4a6a';
+    ctx.beginPath();
+    ctx.roundRect(startX2 + (btnWidth2 + btnSpacing) * 2, row2Y, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = hasEvent ? '#1a1a2e' : '#ffffff';
+    ctx.fillText('🎉', startX2 + (btnWidth2 + btnSpacing) * 2 + btnWidth2 / 2, row2Y + 21);
+    
+    // Quests button
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(startX2 + (btnWidth2 + btnSpacing) * 3 + 3, row2Y + 3, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = '#9b59b6';
+    ctx.beginPath();
+    ctx.roundRect(startX2 + (btnWidth2 + btnSpacing) * 3, row2Y, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('📜', startX2 + (btnWidth2 + btnSpacing) * 3 + btnWidth2 / 2, row2Y + 21);
+    
+    // Stats/Collection button
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(startX2 + (btnWidth2 + btnSpacing) * 4 + 3, row2Y + 3, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = '#1abc9c';
+    ctx.beginPath();
+    ctx.roundRect(startX2 + (btnWidth2 + btnSpacing) * 4, row2Y, btnWidth2, btnHeight2, 6);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '10px Arial';
+    ctx.fillText('📊', startX2 + (btnWidth2 + btnSpacing) * 4 + btnWidth2 / 2, row2Y + 20);
+
     // Currency display
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 16px Arial';
@@ -3119,6 +4414,53 @@ function handleCanvasClick(event) {
             ShopManager.toggle();
             return;
         }
+        
+        // Second row buttons
+        const row2Y = 445 + 50;
+        const btnWidth2 = 80;
+        const btnHeight2 = 32;
+        const btnSpacing = 10;
+        const startX2 = (CONFIG.canvasWidth - (btnWidth2 * 5 + btnSpacing * 4)) / 2;
+        
+        // Daily Spin button
+        if (clickX >= startX2 && clickX <= startX2 + btnWidth2 &&
+            clickY >= row2Y && clickY <= row2Y + btnHeight2) {
+            SoundManager.init();
+            DailySpinManager.toggle();
+            return;
+        }
+        
+        // Challenges button
+        if (clickX >= startX2 + btnWidth2 + btnSpacing && clickX <= startX2 + (btnWidth2 + btnSpacing) * 2 &&
+            clickY >= row2Y && clickY <= row2Y + btnHeight2) {
+            SoundManager.init();
+            ChallengeManager.toggle();
+            return;
+        }
+        
+        // Events button
+        if (clickX >= startX2 + (btnWidth2 + btnSpacing) * 2 && clickX <= startX2 + (btnWidth2 + btnSpacing) * 3 &&
+            clickY >= row2Y && clickY <= row2Y + btnHeight2) {
+            SoundManager.init();
+            EventManager.toggle();
+            return;
+        }
+        
+        // Quests button
+        if (clickX >= startX2 + (btnWidth2 + btnSpacing) * 3 && clickX <= startX2 + (btnWidth2 + btnSpacing) * 4 &&
+            clickY >= row2Y && clickY <= row2Y + btnHeight2) {
+            SoundManager.init();
+            QuestManager.toggle();
+            return;
+        }
+        
+        // Stats button (shows collection too)
+        if (clickX >= startX2 + (btnWidth2 + btnSpacing) * 4 && clickX <= startX2 + (btnWidth2 + btnSpacing) * 5 &&
+            clickY >= row2Y && clickY <= row2Y + btnHeight2) {
+            SoundManager.init();
+            CollectionManager.toggle();
+            return;
+        }
     }
 
     // Feature #15: Handle level complete screen clicks
@@ -3547,6 +4889,16 @@ function init() {
     // Initialize achievements and shop
     AchievementManager.init();
     ShopManager.init();
+    
+    // Initialize new features
+    LeaderboardManager.init();
+    ChallengeManager.init();
+    EventManager.init();
+    QuestManager.init();
+    DailySpinManager.init();
+    CollectionManager.init();
+    StatsManager.init();
+    TutorialManager.init();
 
     // Set up overlay play button click handler
     const overlayBtn = document.getElementById('start-button-overlay');

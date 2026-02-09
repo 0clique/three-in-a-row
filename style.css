@@ -278,3 +278,311 @@ body {
     background: #4b5563;
     cursor: not-allowed;
 }
+
+/* Challenges Modal */
+.challenges-content {
+    max-width: 500px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.challenges-section {
+    margin-bottom: 20px;
+}
+
+.challenges-section h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    color: #f3f4f6;
+}
+
+.challenges-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.challenge-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid #374151;
+}
+
+.challenge-item.completed {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.challenge-icon {
+    font-size: 24px;
+}
+
+.challenge-info {
+    flex: 1;
+    text-align: left;
+}
+
+.challenge-name {
+    font-size: 14px;
+    font-weight: bold;
+    color: #f3f4f6;
+}
+
+.challenge-desc {
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.challenge-reward {
+    font-size: 12px;
+    color: #f1c40f;
+}
+
+.challenge-progress {
+    font-size: 12px;
+    color: #10b981;
+}
+
+/* Events Modal */
+.events-content {
+    max-width: 500px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.event-display {
+    padding: 20px;
+    background: linear-gradient(135deg, #f1c40f, #e74c3c);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    color: white;
+}
+
+.event-display h3 {
+    font-size: 20px;
+    margin-bottom: 8px;
+}
+
+.event-display p {
+    font-size: 14px;
+}
+
+.events-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.event-item {
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    color: #9ca3af;
+}
+
+.event-item.active {
+    border-color: #f1c40f;
+    color: #f3f4f6;
+}
+
+/* Quests Modal */
+.quests-content {
+    max-width: 450px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.current-quest {
+    padding: 20px;
+    background: linear-gradient(135deg, #9b59b6, #3498db);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    color: white;
+}
+
+.current-quest h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+}
+
+.current-quest p {
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.quest-progress {
+    font-size: 14px;
+    color: #f1c40f;
+}
+
+.quest-progress-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.quest-progress-fill {
+    height: 100%;
+    background: #f1c40f;
+    transition: width 0.3s;
+}
+
+/* Daily Spin Modal */
+.spin-content {
+    max-width: 400px;
+}
+
+.spin-wheel {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: conic-gradient(
+        #e74c3c 0deg 51.4deg,
+        #3498db 51.4deg 102.8deg,
+        #2ecc71 102.8deg 154.2deg,
+        #f1c40f 154.2deg 205.7deg,
+        #9b59b6 205.7deg 257.1deg,
+        #e67e22 257.1deg 308.5deg,
+        #1abc9c 308.5deg 360deg
+    );
+    margin: 20px auto;
+    position: relative;
+    border: 4px solid #fff;
+}
+
+.spin-pointer {
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 24px;
+    color: #fff;
+}
+
+.spin-result {
+    font-size: 18px;
+    color: #f1c40f;
+    margin: 16px 0;
+    min-height: 24px;
+}
+
+.btn-secondary {
+    margin-top: 12px;
+    margin-left: 12px;
+    background: #4b5563;
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.btn-secondary:hover {
+    background: #6b7280;
+}
+
+/* Collection Modal */
+.collection-content {
+    max-width: 500px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.collection-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.tab-btn {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 2px solid #374151;
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tab-btn.active {
+    border-color: #f1c40f;
+    background: rgba(241, 196, 15, 0.2);
+}
+
+.collection-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+.collection-item {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    font-size: 24px;
+}
+
+.collection-item.locked {
+    opacity: 0.3;
+}
+
+/* Statistics Modal */
+.stats-content {
+    max-width: 450px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.stats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.stat-label {
+    color: #9ca3af;
+    font-size: 14px;
+}
+
+.stat-value {
+    color: #f3f4f6;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* Tutorial Modal */
+.tutorial-content {
+    max-width: 400px;
+}
+
+.tutorial-content h2 {
+    margin-bottom: 16px;
+}
+
+.tutorial-content p {
+    font-size: 16px;
+    line-height: 1.6;
+    color: #9ca3af;
+    margin-bottom: 24px;
+}

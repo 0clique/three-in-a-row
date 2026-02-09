@@ -56,6 +56,88 @@
                 <button id="close-shop" class="btn-primary">Done</button>
             </div>
         </div>
+
+        <!-- Challenges Modal -->
+        <div id="challenges-modal" class="modal hidden">
+            <div class="modal-content challenges-content">
+                <h2>🎯 Daily Challenges</h2>
+                <div class="challenges-section">
+                    <h3>📅 Daily</h3>
+                    <div id="daily-challenges" class="challenges-list"></div>
+                </div>
+                <div class="challenges-section">
+                    <h3>📆 Weekly</h3>
+                    <div id="weekly-challenges" class="challenges-list"></div>
+                </div>
+                <button id="close-challenges" class="btn-primary">Done</button>
+            </div>
+        </div>
+
+        <!-- Events Modal -->
+        <div id="events-modal" class="modal hidden">
+            <div class="modal-content events-content">
+                <h2>🎉 Events</h2>
+                <div id="event-display" class="event-display"></div>
+                <div id="events-list" class="events-list"></div>
+                <button id="close-events" class="btn-primary">Done</button>
+            </div>
+        </div>
+
+        <!-- Quests Modal -->
+        <div id="quests-modal" class="modal hidden">
+            <div class="modal-content quests-content">
+                <h2>📜 Quests</h2>
+                <div id="current-quest" class="current-quest"></div>
+                <div id="quest-progress" class="quest-progress"></div>
+                <button id="close-quests" class="btn-primary">Done</button>
+            </div>
+        </div>
+
+        <!-- Daily Spin Modal -->
+        <div id="daily-spin-modal" class="modal hidden">
+            <div class="modal-content spin-content">
+                <h2>🎡 Daily Spin</h2>
+                <div id="spin-wheel" class="spin-wheel">
+                    <div class="spin-pointer">▼</div>
+                </div>
+                <div id="spin-result" class="spin-result"></div>
+                <button id="spin-btn" class="btn-primary">SPIN!</button>
+                <button id="close-spin" class="btn-secondary">Later</button>
+            </div>
+        </div>
+
+        <!-- Collection Modal -->
+        <div id="collection-modal" class="modal hidden">
+            <div class="modal-content collection-content">
+                <h2>📚 Collection</h2>
+                <div class="collection-tabs">
+                    <button class="tab-btn active" data-tab="achievements">🏆</button>
+                    <button class="tab-btn" data-tab="gems">💎</button>
+                    <button class="tab-btn" data-tab="powerups">🚀</button>
+                </div>
+                <div id="collection-content" class="collection-content"></div>
+                <button id="close-collection" class="btn-primary">Done</button>
+            </div>
+        </div>
+
+        <!-- Statistics Modal -->
+        <div id="stats-modal" class="modal hidden">
+            <div class="modal-content stats-content">
+                <h2>📊 Statistics</h2>
+                <div id="stats-list" class="stats-list"></div>
+                <button id="close-stats" class="btn-primary">Done</button>
+            </div>
+        </div>
+
+        <!-- Tutorial Modal -->
+        <div id="tutorial-modal" class="modal hidden">
+            <div class="modal-content tutorial-content">
+                <h2 id="tutorial-title">Welcome!</h2>
+                <p id="tutorial-message"></p>
+                <button id="tutorial-next" class="btn-primary">Next</button>
+                <button id="tutorial-skip" class="btn-secondary">Skip</button>
+            </div>
+        </div>
     </div>
     <script src="game.js"></script>
 </body>
