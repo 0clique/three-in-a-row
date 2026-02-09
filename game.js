@@ -1919,9 +1919,9 @@ function returnToMenu() {
 }
 
 // Global function for overlay play button
-window.handleOverlayPlayClick = function() {
+function handleOverlayPlayClick() {
     startGame();
-};
+}
 
 /**
  * Draw a bucket (container for gems)
