@@ -3543,6 +3543,14 @@ function init() {
     AchievementManager.init();
     ShopManager.init();
 
+    // Set up overlay play button click handler
+    const overlayBtn = document.getElementById('start-button-overlay');
+    if (overlayBtn) {
+        overlayBtn.addEventListener('click', function() {
+            startGame();
+        });
+    }
+
     // Start the game loop
     gameLoop();
 }
