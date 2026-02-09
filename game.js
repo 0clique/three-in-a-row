@@ -1874,13 +1874,18 @@ class GridManager {
  * Start the game (called from PLAY button)
  */
 function startGame() {
+    console.log('PLAY button clicked - startGame() called');
     // Hide overlay button
     const overlayBtn = document.getElementById('start-button-overlay');
+    console.log('Overlay button element:', overlayBtn);
     if (overlayBtn) {
+        console.log('Hiding overlay button');
         overlayBtn.style.display = 'none';
     }
     
+    console.log('Setting gameState to PLAYING');
     game.gameState = GAME_STATE.PLAYING;
+    console.log('game.gameState is now:', game.gameState);
     game.score = 0;
     game.level = 1;
     game.moves = ShopManager.getBonusMoves();
