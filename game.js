@@ -1264,6 +1264,685 @@ const StatsManager = {
     }
 };
 
+// Feature #38: Level Badges
+const BADGES = {
+    BRONZE: { id: 'bronze', name: 'Bronze', threshold: 0, icon: '🥉', color: '#cd7f32' },
+    SILVER: { id: 'silver', name: 'Silver', threshold: 1000, icon: '🥈', color: '#c0c0c0' },
+    GOLD: { id: 'gold', name: 'Gold', threshold: 5000, icon: '🥇', color: '#ffd700' },
+    PLATINUM: { id: 'platinum', name: 'Platinum', threshold: 15000, icon: '💠', color: '#e5e4e2' },
+    DIAMOND: { id: 'diamond', name: 'Diamond', threshold: 30000, icon: '💎', color: '#b9f2ff' },
+    MASTER: { id: 'master', name: 'Master', threshold: 50000, icon: '👑', color: '#9b59b6' },
+    LEGEND: { id: 'legend', name: 'Legend', threshold: 100000, icon: '🌟', color: '#f1c40f' }
+};
+
+const BadgeManager = {
+    currentBadge: 'bronze',
+    
+    init() {
+        this.updateBadge();
+    },
+    
+    updateBadge() {
+        const totalScore = AchievementManager.stats.totalScore;
+        const badges = Object.values(BADGES);
+        
+        for (let i = badges.length - 1; i >= 0; i--) {
+            if (totalScore >= badges[i].threshold) {
+                this.currentBadge = badges[i].id;
+                break;
+            }
+        }
+    },
+    
+    getBadge() {
+        return BADGES[this.currentBadge.toUpper()] || BADGES.BRONZE;
+    },
+    
+    getProgressToNext() {
+        const badges = Object.values(BADGES);
+        const currentIdx = badges.findIndex(b => b.id === this.currentBadge);
+        if (currentIdx >= badges.length - 1) return null; // Max level
+        
+        const nextBadge = badges[currentIdx + 1];
+        const currentBadge = badges[currentIdx];
+        const totalScore = AchievementManager.stats.totalScore;
+        const progress = (totalScore - currentBadge.threshold) / (nextBadge.threshold - currentBadge.threshold);
+        
+        return {
+            current: currentBadge,
+            next: nextBadge,
+            progress: Math.min(progress, 1),
+            remaining: nextBadge.threshold - totalScore
+        };
+    },
+    
+    reset() {
+        this.currentBadge = 'bronze';
+    }
+};
+
+// Feature #39: Lucky Chest
+const ChestManager = {
+    chests: {
+        daily: { count: 0, lastClaimed: null },
+        bonus: { count: 0, lastClaimed: null }
+    },
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_chests');
+        if (saved) {
+            this.chests = JSON.parse(saved);
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_chests', JSON.stringify(this.chests));
+    },
+    
+    canClaimDaily() {
+        if (this.chests.daily.count > 0) return false;
+        if (!this.chests.daily.lastClaimed) return true;
+        const lastDate = new Date(this.chests.daily.lastClaimed).toDateString();
+        const today = new Date().toDateString();
+        return lastDate !== today;
+    },
+    
+    claimDaily() {
+        if (!this.canClaimDaily()) return null;
+        
+        // Free chest
+        this.chests.daily.count = 1;
+        this.chests.daily.lastClaimed = Date.now();
+        this.save();
+        
+        // Random reward
+        const rewards = [
+            { type: 'coins', value: 100, icon: '🪙' },
+            { type: 'coins', value: 200, icon: '🪙' },
+            { type: 'coins', value: 300, icon: '🪙' },
+            { type: 'gems', value: 5, icon: '💎' },
+            { type: 'gems', value: 10, icon: '💎' },
+            { type: 'boost_moves', value: 2, icon: '👟' }
+        ];
+        const reward = rewards[Math.floor(Math.random() * rewards.length)];
+        
+        // Apply reward
+        if (reward.type === 'coins') game.coins = (game.coins || 0) + reward.value;
+        else if (reward.type === 'gems') game.gems = (game.gems || 0) + reward.value;
+        else if (reward.type === 'boost_moves') ShopManager.activeBoosts.extraMoves += reward.value;
+        
+        this.save();
+        return reward;
+    },
+    
+    watchAd() {
+        // Simulate ad watch (in real app, this would be an ad SDK)
+        return new Promise((resolve) => {
+            showNotification('📺 Watching ad...', 2000);
+            setTimeout(() => {
+                const rewards = [
+                    { type: 'coins', value: 500, icon: '🪙' },
+                    { type: 'gems', value: 15, icon: '💎' },
+                    { type: 'boost_time', value: 15, icon: '⏱️' }
+                ];
+                const reward = rewards[Math.floor(Math.random() * rewards.length)];
+                
+                if (reward.type === 'coins') game.coins = (game.coins || 0) + reward.value;
+                else if (reward.type === 'gems') game.gems = (game.gems || 0) + reward.value;
+                else if (reward.type === 'boost_time') ShopManager.activeBoosts.extraTime += reward.value;
+                
+                resolve(reward);
+            }, 2500);
+        });
+    },
+    
+    reset() {
+        this.chests = { daily: { count: 0, lastClaimed: null }, bonus: { count: 0, lastClaimed: null } };
+        this.save();
+    }
+};
+
+// Feature #40: Puzzle Mode
+const PUZZLE_LEVELS = [
+    { id: 1, name: 'Tutorial', description: 'Learn the basics', target: 500, moves: 10, hint: 'Match the red gems!' },
+    { id: 2, name: 'Easy Start', description: 'Simple matching', target: 800, moves: 12, hint: 'Look for 3-in-a-row' },
+    { id: 3, name: 'Color Focus', description: 'Master one color', target: 1000, moves: 15, hint: 'Focus on blue gems' },
+    { id: 4, name: 'Combo Time', description: 'Chain reactions', target: 1500, moves: 18, hint: 'Create cascades!' },
+    { id: 5, name: 'Power Up', description: 'Use power-ups', target: 2000, moves: 20, hint: 'Match 4 for a bomb!' },
+    { id: 6, name: 'Expert', description: 'Test your skills', target: 2500, moves: 22, hint: 'Plan ahead' },
+    { id: 7, name: 'Master', description: 'Advanced play', target: 3000, moves: 25, hint: 'Maximize combos' },
+    { id: 8, name: 'Champion', description: 'Top tier', target: 4000, moves: 28, hint: 'Stay focused' },
+    { id: 9, name: 'Legend', description: 'For legends', target: 5000, moves: 30, hint: 'No mistakes!' },
+    { id: 10, name: 'Ultimate', description: 'Final challenge', target: 6000, moves: 35, hint: 'You can do it!' }
+];
+
+const PuzzleManager = {
+    unlocked: [1],
+    completed: [],
+    currentPuzzle: null,
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_puzzle');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.unlocked = data.unlocked || [1];
+            this.completed = data.completed || [];
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_puzzle', JSON.stringify({
+            unlocked: this.unlocked,
+            completed: this.completed
+        }));
+    },
+    
+    startPuzzle(levelId) {
+        const level = PUZZLE_LEVELS.find(l => l.id === levelId);
+        if (!level) return false;
+        
+        this.currentPuzzle = {
+            level: level,
+            movesLeft: level.moves,
+            score: 0,
+            startTime: Date.now()
+        };
+        
+        game.gameState = GAME_STATE.PLAYING;
+        game.moves = level.moves;
+        game.score = 0;
+        game.targetScore = level.target;
+        game.level = 1;
+        game.timer = 999999; // No timer in puzzle mode
+        game.gameMode = 'puzzle';
+        
+        game.gridManager.initialize();
+        game.grid = game.gridManager.getGrid();
+        game.gridInitialized = true;
+        
+        return true;
+    },
+    
+    completePuzzle(success) {
+        if (success) {
+            if (!this.completed.includes(this.currentPuzzle.level.id)) {
+                this.completed.push(this.currentPuzzle.level.id);
+            }
+            
+            // Unlock next level
+            const nextId = this.currentPuzzle.level.id + 1;
+            if (!this.unlocked.includes(nextId) && PUZZLE_LEVELS.find(l => l.id === nextId)) {
+                this.unlocked.push(nextId);
+                AchievementManager.unlockAchievement('level_5');
+            }
+            
+            game.coins = (game.coins || 0) + this.currentPuzzle.level.id * 25;
+        }
+        
+        this.save();
+        this.currentPuzzle = null;
+    },
+    
+    getProgress() {
+        return {
+            unlocked: this.unlocked.length,
+            total: PUZZLE_LEVELS.length,
+            completed: this.completed.length
+        };
+    },
+    
+    reset() {
+        this.unlocked = [1];
+        this.completed = [];
+        this.save();
+    }
+};
+
+// Feature #41: Endless Mode
+const EndlessManager = {
+    isActive: false,
+    
+    start() {
+        this.isActive = true;
+        game.gameState = GAME_STATE.PLAYING;
+        game.score = 0;
+        game.level = 1;
+        game.moves = 30;
+        game.targetScore = 0; // No target in endless
+        game.timer = 999999; // No timer
+        game.gameMode = 'endless';
+        
+        game.gridManager.initialize();
+        game.grid = game.gridManager.getGrid();
+        game.gridInitialized = true;
+    },
+    
+    checkLoss() {
+        // Check if any moves are possible
+        return !game.gridManager.hasValidMoves();
+    },
+    
+    onMoveUsed() {
+        if (this.checkLoss()) {
+            showNotification('💀 No more moves!', 3000);
+            SoundManager.gameOver();
+            this.end();
+        }
+    },
+    
+    end() {
+        this.isActive = false;
+        game.gameState = GAME_STATE.LOST;
+        stopTimer();
+        
+        // Record stats
+        StatsManager.recordGame({
+            score: game.score,
+            level: game.level,
+            combo: AchievementManager.stats.maxCombo,
+            gemsCleared: AchievementManager.stats.totalGemsCleared,
+            duration: Math.floor((Date.now() - game.startTime) / 1000)
+        });
+    },
+    
+    reset() {
+        this.isActive = false;
+    }
+};
+
+// Feature #42: Timed Rush Mode
+const RushManager = {
+    isActive: false,
+    timeLeft: 60,
+    
+    start() {
+        this.isActive = true;
+        this.timeLeft = 60;
+        game.gameState = GAME_STATE.PLAYING;
+        game.score = 0;
+        game.level = 1;
+        game.moves = 999; // Unlimited moves
+        game.targetScore = 0;
+        game.timer = 60;
+        game.gameMode = 'rush';
+        
+        game.gridManager.initialize();
+        game.grid = game.gridManager.getGrid();
+        game.gridInitialized = true;
+        
+        startTimer();
+    },
+    
+    onTick() {
+        this.timeLeft--;
+        game.timer = this.timeLeft;
+        
+        if (this.timeLeft <= 0) {
+            this.end();
+        }
+    },
+    
+    end() {
+        this.isActive = false;
+        stopTimer();
+        game.gameState = GAME_STATE.LOST;
+        showNotification(`⏰ Time's up! Score: ${game.score.toLocaleString()}`, 4000);
+        
+        StatsManager.recordGame({
+            score: game.score,
+            level: game.level,
+            combo: AchievementManager.stats.maxCombo,
+            gemsCleared: AchievementManager.stats.totalGemsCleared,
+            duration: 60
+        });
+    },
+    
+    reset() {
+        this.isActive = false;
+        this.timeLeft = 60;
+    }
+};
+
+// Feature #43: Cloud Save
+const CloudSaveManager = {
+    lastSync: null,
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_cloudSync');
+        if (saved) {
+            this.lastSync = JSON.parse(saved).timestamp;
+        }
+    },
+    
+    save() {
+        const data = {
+            timestamp: Date.now(),
+            game: {
+                gems: game.gems,
+                coins: game.coins
+            },
+            achievements: {
+                stats: AchievementManager.stats,
+                unlocked: Array.from(AchievementManager.unlocked)
+            },
+            shop: {
+                purchased: Array.from(ShopManager.purchased),
+                permanentStats: ShopManager.permanentStats
+            },
+            collection: {
+                achievements: Array.from(CollectionManager.unlocked.achievements),
+                gems: Array.from(CollectionManager.unlocked.gems),
+                powerUps: Array.from(CollectionManager.unlocked.powerUps)
+            },
+            stats: StatsManager.stats,
+            puzzle: {
+                unlocked: PuzzleManager.unlocked,
+                completed: PuzzleManager.completed
+            }
+        };
+        
+        localStorage.setItem('threeInRow_cloudSync', JSON.stringify(data));
+        localStorage.setItem('threeInRow_backup', JSON.stringify(data));
+        this.lastSync = data.timestamp;
+        
+        showNotification('☁️ Progress saved to cloud!', 2000);
+    },
+    
+    load() {
+        const saved = localStorage.getItem('threeInRow_backup');
+        if (!saved) {
+            showNotification('No backup found', 2000);
+            return false;
+        }
+        
+        const data = JSON.parse(saved);
+        
+        // Restore data
+        if (data.game) {
+            game.gems = data.game.gems || 0;
+            game.coins = data.game.coins || 0;
+        }
+        
+        if (data.achievements) {
+            AchievementManager.stats = data.achievements.stats || AchievementManager.stats;
+            AchievementManager.unlocked = new Set(data.achievements.unlocked || []);
+        }
+        
+        if (data.shop) {
+            ShopManager.purchased = new Set(data.shop.purchased || []);
+            ShopManager.permanentStats = data.shop.permanentStats || ShopManager.permanentStats;
+        }
+        
+        if (data.collection) {
+            CollectionManager.unlocked.achievements = new Set(data.collection.achievements || []);
+            CollectionManager.unlocked.gems = new Set(data.collection.gems || []);
+            CollectionManager.unlocked.powerUps = new Set(data.collection.powerUps || []);
+        }
+        
+        if (data.stats) {
+            StatsManager.stats = { ...StatsManager.stats, ...data.stats };
+        }
+        
+        if (data.puzzle) {
+            PuzzleManager.unlocked = data.puzzle.unlocked || [1];
+            PuzzleManager.completed = data.puzzle.completed || [];
+        }
+        
+        showNotification('☁️ Progress restored!', 2000);
+        return true;
+    },
+    
+    autoSave() {
+        // Auto-save every 5 minutes
+        this.save();
+    },
+    
+    reset() {
+        this.lastSync = null;
+        localStorage.removeItem('threeInRow_cloudSync');
+        localStorage.removeItem('threeInRow_backup');
+    }
+};
+
+// Feature #44: Undo System
+const UndoManager = {
+    history: [],
+    maxHistory: 5,
+    
+    saveState() {
+        const state = {
+            grid: JSON.parse(JSON.stringify(game.grid)),
+            score: game.score,
+            moves: game.moves,
+            combo: game.comboCount
+        };
+        
+        this.history.push(state);
+        
+        // Limit history size
+        if (this.history.length > this.maxHistory) {
+            this.history.shift();
+        }
+    },
+    
+    undo() {
+        if (this.history.length === 0) {
+            showNotification('No moves to undo!', 1500);
+            return false;
+        }
+        
+        const state = this.history.pop();
+        game.grid = state.grid;
+        game.score = state.score;
+        game.moves = state.moves;
+        game.comboCount = state.combo;
+        
+        showNotification('↩️ Move undone!', 1500);
+        SoundManager.undo();
+        return true;
+    },
+    
+    clear() {
+        this.history = [];
+    },
+    
+    reset() {
+        this.clear();
+    }
+};
+
+// Feature #45: Hint System
+const HintManager = {
+    hintsRemaining: 3,
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_hints');
+        if (saved) {
+            this.hintsRemaining = JSON.parse(saved).count;
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_hints', JSON.stringify({ count: this.hintsRemaining }));
+    },
+    
+    useHint() {
+        if (this.hintsRemaining <= 0) {
+            showNotification('No hints remaining!', 1500);
+            return null;
+        }
+        
+        this.hintsRemaining--;
+        this.save();
+        return this.findHint();
+    },
+    
+    findHint() {
+        // Find a valid move
+        for (let r = 0; r < CONFIG.gridRows; r++) {
+            for (let c = 0; c < CONFIG.gridCols; c++) {
+                // Check swap right
+                if (c < CONFIG.gridCols - 1) {
+                    if (this.wouldMatch(r, c, r, c + 1)) {
+                        return { r1: r, c1: c, r2: r, c2: c + 1 };
+                    }
+                }
+                // Check swap down
+                if (r < CONFIG.gridRows - 1) {
+                    if (this.wouldMatch(r, c, r + 1, c)) {
+                        return { r1: r, c1: c, r2: r + 1, c2: c };
+                    }
+                }
+            }
+        }
+        return null; // No moves available
+    },
+    
+    wouldMatch(r1, c1, r2, c2) {
+        // Simulate swap
+        const temp = game.grid[r1][c1].type;
+        game.grid[r1][c1].type = game.grid[r2][c2].type;
+        game.grid[r2][c2].type = temp;
+        
+        const hasMatch = game.gridManager.findMatches().length > 0;
+        
+        // Swap back
+        game.grid[r2][c2].type = game.grid[r1][c1].type;
+        game.grid[r1][c1].type = temp;
+        
+        return hasMatch;
+    },
+    
+    buyHint() {
+        const cost = 25;
+        if ((game.gems || 0) >= cost) {
+            game.gems -= cost;
+            this.hintsRemaining += 1;
+            this.save();
+            showNotification(`+1 Hint (${this.hintsRemaining} total)`, 1500);
+            return true;
+        }
+        showNotification('Not enough gems!', 1500);
+        return false;
+    },
+    
+    reset() {
+        this.hintsRemaining = 3;
+        this.save();
+    }
+};
+
+// Feature #46: Profile System
+const ProfileManager = {
+    username: 'Player',
+    avatar: '😊',
+    bio: 'Three-in-a-Row enthusiast!',
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_profile');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.username = data.username || 'Player';
+            this.avatar = data.avatar || '😊';
+            this.bio = data.bio || 'Three-in-a-Row enthusiast!';
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_profile', JSON.stringify({
+            username: this.username,
+            avatar: this.avatar,
+            bio: this.bio
+        }));
+    },
+    
+    updateUsername(name) {
+        this.username = name.substring(0, 15);
+        this.save();
+    },
+    
+    updateAvatar(emoji) {
+        this.avatar = emoji;
+        this.save();
+    },
+    
+    updateBio(text) {
+        this.bio = text.substring(0, 50);
+        this.save();
+    },
+    
+    getProfile() {
+        return {
+            username: this.username,
+            avatar: this.avatar,
+            bio: this.bio,
+            badge: BadgeManager.getBadge(),
+            level: AchievementManager.stats.maxLevel,
+            totalScore: AchievementManager.stats.totalScore,
+            bestCombo: AchievementManager.stats.maxCombo,
+            gamesPlayed: StatsManager.stats.totalGames
+        };
+    },
+    
+    reset() {
+        this.username = 'Player';
+        this.avatar = '😊';
+        this.bio = 'Three-in-a-Row enthusiast!';
+        this.save();
+    }
+};
+
+// Feature #47: Game Mode Selector
+const GameModeManager = {
+    modes: [
+        { id: 'classic', name: 'Classic', icon: '🎮', desc: 'Score target, time limit' },
+        { id: 'puzzle', name: 'Puzzle', icon: '🧩', desc: 'Limited moves, solve puzzles' },
+        { id: 'endless', name: 'Endless', icon: '♾️', desc: 'No timer, play forever' },
+        { id: 'rush', name: 'Timed Rush', icon: '⚡', desc: '60 seconds, score fast!' }
+    ],
+    
+    selectedMode: 'classic',
+    
+    init() {
+        const saved = localStorage.getItem('threeInRow_gameMode');
+        if (saved) {
+            this.selectedMode = JSON.parse(saved).mode;
+        }
+    },
+    
+    save() {
+        localStorage.setItem('threeInRow_gameMode', JSON.stringify({ mode: this.selectedMode }));
+    },
+    
+    selectMode(modeId) {
+        this.selectedMode = modeId;
+        this.save();
+    },
+    
+    startGame() {
+        switch (this.selectedMode) {
+            case 'classic':
+                return true; // Normal game
+            case 'puzzle':
+                // Show puzzle level selection
+                return false; // Handled separately
+            case 'endless':
+                EndlessManager.start();
+                return true;
+            case 'rush':
+                RushManager.start();
+                return true;
+            default:
+                return true;
+        }
+    },
+    
+    reset() {
+        this.selectedMode = 'classic';
+        this.save();
+    }
+};
+
 // Sound Manager - Feature #12: Sound Effects
 const SoundManager = {
     audioContext: null,
@@ -1383,6 +2062,13 @@ const SoundManager = {
         setTimeout(() => this.play(659.25, 0.1, 'sine', 0.25), 80);
         setTimeout(() => this.play(783.99, 0.1, 'sine', 0.25), 160);
         setTimeout(() => this.play(1046.5, 0.2, 'sine', 0.35), 240);
+    },
+    
+    undo() {
+        // Rewind sound effect
+        this.play(440, 0.08, 'sine', 0.2);
+        setTimeout(() => this.play(392, 0.08, 'sine', 0.2), 50);
+        setTimeout(() => this.play(349.23, 0.1, 'sine', 0.25), 100);
     },
     
     toggle() {
@@ -4899,6 +5585,16 @@ function init() {
     CollectionManager.init();
     StatsManager.init();
     TutorialManager.init();
+    BadgeManager.init();
+    ChestManager.init();
+    PuzzleManager.init();
+    UndoManager.init();
+    HintManager.init();
+    ProfileManager.init();
+    GameModeManager.init();
+    
+    // Auto-save every 5 minutes
+    setInterval(() => CloudSaveManager.autoSave(), 5 * 60 * 1000);
 
     // Set up overlay play button click handler
     const overlayBtn = document.getElementById('start-button-overlay');

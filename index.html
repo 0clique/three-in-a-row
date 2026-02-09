@@ -138,6 +138,76 @@
                 <button id="tutorial-skip" class="btn-secondary">Skip</button>
             </div>
         </div>
+
+        <!-- Badge Modal -->
+        <div id="badge-modal" class="modal hidden">
+            <div class="modal-content badge-content">
+                <h2 id="badge-title">Your Badge</h2>
+                <div id="badge-display" class="badge-display"></div>
+                <div id="badge-progress" class="badge-progress"></div>
+                <button id="close-badge" class="btn-primary">Awesome!</button>
+            </div>
+        </div>
+
+        <!-- Chest Modal -->
+        <div id="chest-modal" class="modal hidden">
+            <div class="modal-content chest-content">
+                <h2>🎁 Lucky Chest</h2>
+                <div id="chest-display" class="chest-display"></div>
+                <button id="claim-chest" class="btn-primary">Claim Free Chest</button>
+                <button id="watch-ad-chest" class="btn-secondary">📺 Watch Ad (Bonus!)</button>
+                <button id="close-chest" class="btn-secondary">Later</button>
+            </div>
+        </div>
+
+        <!-- Puzzle Mode Modal -->
+        <div id="puzzle-modal" class="modal hidden">
+            <div class="modal-content puzzle-content">
+                <h2>🧩 Puzzle Mode</h2>
+                <div id="puzzle-progress" class="puzzle-progress"></div>
+                <div id="puzzle-levels" class="puzzle-levels"></div>
+                <button id="close-puzzle" class="btn-primary">Back</button>
+            </div>
+        </div>
+
+        <!-- Game Mode Selector Modal -->
+        <div id="gamemode-modal" class="modal hidden">
+            <div class="modal-content gamemode-content">
+                <h2>🎮 Select Game Mode</h2>
+                <div id="gamemode-list" class="gamemode-list"></div>
+                <button id="close-gamemode" class="btn-primary">Back</button>
+            </div>
+        </div>
+
+        <!-- Undo Button (in-game) -->
+        <button id="undo-btn" class="game-btn hidden" title="Undo (5 uses)">↩️</button>
+        
+        <!-- Hint Button (in-game) -->
+        <button id="hint-btn" class="game-btn hidden" title="Hint">💡</button>
+
+        <!-- Cloud Save Modal -->
+        <div id="cloud-modal" class="modal hidden">
+            <div class="modal-content cloud-content">
+                <h2>☁️ Cloud Save</h2>
+                <p id="cloud-status"></p>
+                <button id="save-cloud" class="btn-primary">Save to Cloud</button>
+                <button id="load-cloud" class="btn-secondary">Load from Cloud</button>
+                <button id="close-cloud" class="btn-secondary">Back</button>
+            </div>
+        </div>
+
+        <!-- Profile Modal -->
+        <div id="profile-modal" class="modal hidden">
+            <div class="modal-content profile-content">
+                <h2>👤 Profile</h2>
+                <div id="profile-avatar" class="profile-avatar"></div>
+                <input type="text" id="profile-name" placeholder="Username" maxlength="15">
+                <input type="text" id="profile-bio" placeholder="Bio" maxlength="50">
+                <div class="profile-stats"></div>
+                <button id="save-profile" class="btn-primary">Save</button>
+                <button id="close-profile" class="btn-secondary">Back</button>
+            </div>
+        </div>
     </div>
     <script src="game.js"></script>
 </body>

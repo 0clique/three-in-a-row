@@ -586,3 +586,290 @@ body {
     color: #9ca3af;
     margin-bottom: 24px;
 }
+
+/* Badge Modal */
+.badge-content {
+    max-width: 350px;
+}
+
+.badge-display {
+    font-size: 80px;
+    margin: 20px 0;
+}
+
+.badge-display .badge-icon {
+    filter: drop-shadow(0 0 20px currentColor);
+}
+
+.badge-name {
+    font-size: 28px;
+    font-weight: bold;
+    color: #f1c40f;
+    margin-bottom: 16px;
+}
+
+.badge-progress {
+    font-size: 14px;
+    color: #9ca3af;
+}
+
+.badge-progress-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+.badge-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #f1c40f, #e74c3c);
+    border-radius: 4px;
+}
+
+/* Chest Modal */
+.chest-content {
+    max-width: 350px;
+}
+
+.chest-display {
+    font-size: 100px;
+    margin: 20px 0;
+    animation: chestBounce 1s ease-in-out infinite;
+}
+
+@keyframes chestBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.chest-reward {
+    font-size: 24px;
+    color: #f1c40f;
+    margin: 16px 0;
+}
+
+/* Puzzle Modal */
+.puzzle-content {
+    max-width: 500px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.puzzle-progress {
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: #9ca3af;
+}
+
+.puzzle-levels {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.puzzle-level {
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 2px solid #374151;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.puzzle-level:hover {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.puzzle-level.completed {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.puzzle-level.locked {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.puzzle-level-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.puzzle-level-name {
+    font-size: 14px;
+    font-weight: bold;
+    color: #f3f4f6;
+}
+
+.puzzle-level-target {
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 4px;
+}
+
+/* Game Mode Modal */
+.gamemode-content {
+    max-width: 500px;
+}
+
+.gamemode-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.gamemode-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 2px solid #374151;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.gamemode-item:hover {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.gamemode-item.selected {
+    border-color: #f1c40f;
+    background: rgba(241, 196, 15, 0.1);
+}
+
+.gamemode-icon {
+    font-size: 36px;
+}
+
+.gamemode-info {
+    flex: 1;
+    text-align: left;
+}
+
+.gamemode-name {
+    font-size: 18px;
+    font-weight: bold;
+    color: #f3f4f6;
+}
+
+.gamemode-desc {
+    font-size: 13px;
+    color: #9ca3af;
+}
+
+/* In-game Buttons */
+.game-btn {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 50;
+    transition: transform 0.2s;
+}
+
+.game-btn:hover {
+    transform: scale(1.1);
+}
+
+#undo-btn {
+    top: 10px;
+    right: 10px;
+    background: #3498db;
+    color: white;
+}
+
+#hint-btn {
+    top: 70px;
+    right: 10px;
+    background: #f1c40f;
+    color: #1a1a2e;
+}
+
+/* Cloud Modal */
+.cloud-content {
+    max-width: 350px;
+}
+
+.cloud-status {
+    margin: 16px 0;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    font-size: 14px;
+    color: #9ca3af;
+}
+
+/* Profile Modal */
+.profile-content {
+    max-width: 400px;
+}
+
+.profile-avatar {
+    font-size: 80px;
+    margin: 16px 0;
+    cursor: pointer;
+}
+
+.profile-content input {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #374151;
+    border-radius: 8px;
+    color: #f3f4f6;
+    font-size: 14px;
+}
+
+.profile-content input::placeholder {
+    color: #6b7280;
+}
+
+.profile-stats {
+    margin-top: 16px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.profile-stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.profile-stat-row:last-child {
+    border-bottom: none;
+}
+
+/* Start Button Overlay */
+#start-button-overlay {
+    position: absolute;
+    top: 380px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 180px;
+    height: 50px;
+    background: #2ecc71;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font: bold 24px Arial;
+    cursor: pointer;
+    z-index: 50;
+    transition: background 0.2s;
+}
+
+#start-button-overlay:hover {
+    background: #27ae60;
+}
