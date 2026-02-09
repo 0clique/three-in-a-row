@@ -93,6 +93,8 @@ const game = {
     animations: [],
     animatingGems: new Set(),
     swapInProgress: null,
+    lastMouseX: 0,
+    lastMouseY: 0,
     // Feature #19: Combo system
     comboCount: 0,           // Current combo multiplier (1 = no combo)
     comboTimer: null,        // Timer to reset combo
@@ -239,8 +241,8 @@ const SHOP_ITEMS = {
     SCORE_BOOST_2X: { id: 'score_2x', name: '2x Score', desc: '2x score multiplier for one game', icon: '✨', price: 150, type: 'one_time', value: 2 },
     
     // Consumables (buy with gems)
-    GEMS_100: { id: 'gems_100', name: '100 Gems', desc: 'Get 100 premium gems', icon: '💎', price: 0, type: 'currency', value: 100 },
-    GEMS_500: { id: 'gems_500', name: '500 Gems', desc: 'Get 500 premium gems', icon: '💎', value: 500, price: 0, type: 'currency' },
+    GEMS_100: { id: 'gems_100', name: '100 Gems', desc: 'Get 100 premium gems', icon: '💎', price: 0, priceType: 'gems', type: 'currency', value: 100 },
+    GEMS_500: { id: 'gems_500', name: '500 Gems', desc: 'Get 500 premium gems', icon: '💎', value: 500, price: 0, priceType: 'gems', type: 'currency' },
     
     // Permanent upgrades
     PERMANENT_MOVES_2: { id: 'perm_moves_2', name: 'Pro Moves', desc: '+2 moves permanently', icon: '💪', price: 500, type: 'permanent', stat: 'moves', value: 2 },
@@ -279,9 +281,9 @@ const ShopManager = {
         }));
     },
     
-    canAfford(item) {
+        canAfford(item) {
         if (item.price === 0) return true; // Free items
-        const currency = item.priceType === 'gems' ? (game.gems || 0) : (game.coins || 0);
+        const currency = (item.priceType === 'gems') ? (game.gems || 0) : (game.coins || 0);
         return currency >= item.price;
     },
     
@@ -573,9 +575,11 @@ const SettingsManager = {
         const resetBtn = document.getElementById('reset-progress');
         if (resetBtn) {
             resetBtn.addEventListener('click', () => {
-                if (confirm('Reset all progress? This will clear your high scores.')) {
+                if (confirm('Reset all progress? This will clear your high scores, achievements, and shop data.')) {
                     localStorage.removeItem('threeInARowHighScore');
                     localStorage.removeItem('threeInARowTotalScore');
+                    localStorage.removeItem('threeInRow_achievements');
+                    localStorage.removeItem('threeInRow_shop');
                     console.log('Progress reset');
                     alert('Progress has been reset!');
                 }
@@ -625,7 +629,13 @@ AchievementManager.render = function() {
 };
 
 AchievementManager.init = function() {
-    this.init();
+    // Load from localStorage
+    const saved = localStorage.getItem('threeInRow_achievements');
+    if (saved) {
+        const data = JSON.parse(saved);
+        this.stats = data.stats || this.stats;
+        this.unlocked = new Set(data.unlocked || []);
+    }
     const modal = document.getElementById('achievements-modal');
     if (modal) {
         const closeBtn = document.getElementById('close-achievements');
@@ -689,7 +699,13 @@ ShopManager.render = function() {
 };
 
 ShopManager.init = function() {
-    this.init();
+    const saved = localStorage.getItem('threeInRow_shop');
+    if (saved) {
+        const data = JSON.parse(saved);
+        this.purchased = new Set(data.purchased || []);
+        this.activeBoosts = data.activeBoosts || this.activeBoosts;
+        this.permanentStats = data.permanentStats || this.permanentStats;
+    }
     const modal = document.getElementById('shop-modal');
     if (modal) {
         const closeBtn = document.getElementById('close-shop');
@@ -969,7 +985,7 @@ function updateComboMessages(ctx) {
 // Start the countdown timer
 function startTimer() {
     stopTimer(); // Clear any existing timer
-    game.timer = 60; // Reset to 60 seconds
+    game.timer = ShopManager.getBonusTime();
     
     game.timerInterval = setInterval(() => {
         if (game.gameState === GAME_STATE.PLAYING && !game.isAnimating) {
@@ -1078,22 +1094,6 @@ function createSwapAnimation(gem1, gem2) {
 
 // Update animation positions
 function updateAnimation(animation, currentTime) {
-    const elapsed = currentTime - animation.startTime;
-    const progress = Math.min(elapsed / animation.duration, 1);
-    const easedProgress = easeInOutQuad(progress);
-
-    if (animation.type === 'swap') {
-        // Animate gem1 from start to end position
-        animation.gem1.x = lerp(animation.startX1, animation.endX1, easedProgress);
-        animation.gem1.y = lerp(animation.startY1, animation.endY1, easedProgress);
-
-        // Animate gem2 from start to end position
-        animation.gem2.x = lerp(animation.startX2, animation.endX2, easedProgress);
-        animation.gem2.y = lerp(animation.startY2, animation.endY2, easedProgress);
-    }
-
-    return progress >= 1;
-}
 
 // Process all active animations
 function processAnimations() {
@@ -1406,11 +1406,67 @@ class GridManager {
         return null;
     }
 
-    /**
-     * Swap two gems
-     */
-    swapGems(gem1, gem2) {
-        const tempType = gem1.type;
+// Global function for overlay play button
+window.handleOverlayPlayClick = function() {
+    console.log('handleOverlayPlayClick() called');
+    startGame();
+};
+
+/**
+ * Start the game (called from PLAY button)
+ */
+function startGame() {
+    // Hide overlay button
+    const overlayBtn = document.getElementById('start-button-overlay');
+    if (overlayBtn) {
+        overlayBtn.style.display = 'none';
+    }
+    
+    game.gameState = GAME_STATE.PLAYING;
+    game.score = 0;
+    game.level = 1;
+    game.moves = ShopManager.getBonusMoves();
+    game.targetScore = 1000;
+    resetTimer();
+    startTimer();
+
+    // Initialize grid if not already done
+    if (!game.gridInitialized) {
+        game.gridManager.initialize();
+        game.grid = game.gridManager.getGrid();
+        game.gridInitialized = true;
+    }
+
+    game.isAnimating = false;
+    game.selectedGem = null;
+
+    console.log('\n🎮 Starting game! Level 1 - Target: 1000 points');
+}
+
+/**
+ * Return to menu
+ */
+function returnToMenu() {
+    game.gameState = GAME_STATE.MENU;
+    game.isAnimating = false;
+    game.selectedGem = null;
+    
+    // Show overlay button again
+    const overlayBtn = document.getElementById('start-button-overlay');
+    if (overlayBtn) {
+        overlayBtn.style.display = 'block';
+    }
+    
+    stopTimer();
+}
+
+/**
+ * Swap two gems with smooth animation - Feature #8
+ * Feature #19: Updated with combo system
+ * Feature #20: Updated with power-up system
+ */
+async function swapGems(gem1, gem2) {
+    const tempType = gem1.type;
         const tempX = gem1.x;
         const tempY = gem1.y;
 
@@ -1916,6 +1972,7 @@ function drawBucket(x, y, width, height) {
  * Feature #20: Added power-up visual indicators
  */
 function drawGem(gem) {
+    if (!gem) return;
     const ctx = game.ctx;
     const colors = GEM_COLORS;
     const isSelected = game.selectedGem === gem;
@@ -2219,6 +2276,7 @@ function drawStartScreen() {
     // Button text
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
     ctx.fillText('PLAY', CONFIG.canvasWidth / 2, btnY + 33);
 
     // Settings button (smaller, below play button)
@@ -2249,6 +2307,7 @@ function drawStartScreen() {
     const achBtnHeight = 36;
     const achBtnX = 20;
     const achBtnY = btnY + 65;
+    const achBtnCenterX = achBtnX + achBtnWidth / 2;
 
     // Achievements button shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
@@ -2266,7 +2325,8 @@ function drawStartScreen() {
     // Achievements button text
     ctx.fillStyle = achProgress.unlocked > 0 ? '#1a1a2e' : '#ffffff';
     ctx.font = '12px Arial';
-    ctx.fillText(`🏆 ${achProgress.unlocked}/${achProgress.total}`, CONFIG.canvasWidth / 2 - 110, achBtnY + 24);
+    ctx.textAlign = 'center';
+    ctx.fillText(`🏆 ${achProgress.unlocked}/${achProgress.total}`, achBtnCenterX, achBtnY + 24);
 
     // Shop button (right side)
     const shopBtnWidth = 100;
@@ -2483,7 +2543,7 @@ function drawGameOverOverlay() {
 
     // Progress fill (red since failed)
     const progress = Math.min(1, game.score / game.targetScore);
-    const progressFill = Math.max(5, progressWidth * progress);
+    const progressFill = Math.max(2, progressWidth * progress);
     ctx.fillStyle = '#e74c3c';
     ctx.beginPath();
     ctx.roundRect(progressX, progressY, progressFill, progressHeight, 6);
@@ -2971,8 +3031,8 @@ function gameLoop() {
  * Handle click events on the game canvas
  */
 function handleCanvasClick(event) {
-    // Feature #8: Prevent interaction during animations
-    if (game.isAnimating) {
+    // Feature #8: Prevent interaction during animations (only when playing)
+    if (game.gameState === GAME_STATE.PLAYING && game.isAnimating) {
         console.log('Animation in progress, ignoring click');
         return;
     }
@@ -3009,9 +3069,7 @@ function handleCanvasClick(event) {
         if (clickX >= quitBtnX && clickX <= quitBtnX + quitBtnWidth &&
             clickY >= quitBtnY && clickY <= quitBtnY + quitBtnHeight) {
             // Quit to menu
-            game.gameState = GAME_STATE.MENU;
-            game.isPaused = false;
-            stopTimer();
+            returnToMenu();
             return;
         }
         return;
@@ -3031,23 +3089,9 @@ function handleCanvasClick(event) {
 
         if (clickX >= btnX && clickX <= btnX + btnWidth &&
             clickY >= btnY && clickY <= btnY + btnHeight) {
+            console.log('Canvas PLAY button clicked!');
             // Start the game
-            game.gameState = GAME_STATE.PLAYING;
-            game.score = 0;
-            game.level = 1;
-            game.moves = ShopManager.getBonusMoves();
-            game.targetScore = 1000;
-            resetTimer(); // Feature #14: Reset timer on new game
-            startTimer(); // Feature #14: Start the timer
-
-            // Initialize grid if not already done
-            if (!game.gridInitialized) {
-                game.gridManager.initialize();
-                game.grid = game.gridManager.getGrid();
-                game.gridInitialized = true;
-            }
-
-            console.log('\n🎮 Starting game! Level 1 - Target: 1000 points - Time: 60 seconds');
+            startGame();
             return;
         }
 
@@ -3155,6 +3199,8 @@ function handleCanvasClick(event) {
 
         // Reset game state
         game.gameState = GAME_STATE.PLAYING;
+        game.isAnimating = false;
+        game.selectedGem = null;
         resetTimer(); // Feature #14: Reset timer
         startTimer(); // Feature #14: Start timer for new level
 
@@ -3431,8 +3477,8 @@ async function swapGems(gem1, gem2) {
 
         gem1.row = tempRow;
         gem1.col = tempCol;
-        gem2.row = gem2.row;
-        gem2.col = gem2.col;
+        gem2.row = tempRow;
+        gem2.col = tempCol;
 
         gem1.x = gem1.col * game.gridManager.gemSize;
         gem1.y = gem1.row * game.gridManager.gemSize;
